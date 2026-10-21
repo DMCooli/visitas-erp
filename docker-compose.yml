@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: visitas
+      POSTGRES_USER: visitas
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U visitas -d visitas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://visitas:${DB_PASSWORD}@db:5432/visitas
+      FIREBASE_API_KEY: ${FIREBASE_API_KEY:-}
+      FIREBASE_AUTH_DOMAIN: ${FIREBASE_AUTH_DOMAIN:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_APP_ID: ${FIREBASE_APP_ID:-}
+      JWT_SECRET: ${JWT_SECRET}
+      INITIAL_MASTER_EMAIL: ${INITIAL_MASTER_EMAIL:-${MASTER_EMAIL:-}}
+      MASTER_EMAIL: ${INITIAL_MASTER_EMAIL:-${MASTER_EMAIL:-}}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      APP_TZ: ${APP_TZ:-America/Caracas}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+      - "3443:3443"
+    volumes:
+      - ./public:/app/public
+      - ./server.js:/app/server.js
+      - uploads:/data/uploads
+      - ./certs:/data/certs:ro
+
+volumes:
+  pgdata:
+  uploads:

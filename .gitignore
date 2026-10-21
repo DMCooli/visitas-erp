@@ -1,0 +1,28 @@
+# Entornos y credenciales
+.env
+.env.*
+!.env.example
+firebase-key.json
+firebase-adminsdk*.json
+
+# Certificados SSL / TLS
+certs/*
+!certs/.gitkeep
+*.pem
+*.crt
+*.key
+
+# Base de datos y almacenamiento
+pgdata/
+uploads/*
+!uploads/.gitkeep
+
+# Dependencias y logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
