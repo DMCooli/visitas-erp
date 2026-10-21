@@ -1,5 +1,154 @@
-                    GNU GENERAL PUBLIC LICENSE
+================================================================================
+                    LICENCIA PÚBLICA GENERAL DE GNU (GPLv3)
+                       Versión 3, 29 de junio de 2007
+                       (Versión en Español / Spanish Version)
+================================================================================
+
+ Copyright (C) 2026 Damian Medina Cooli
+ Se permite a cualquiera copiar y distribuir copias literales
+ de este documento de licencia, pero no se permite modificarlo.
+
+ [AVISO LEGAL: Esta es una traducción al español para facilitar su comprensión
+ y lectura. De conformidad con las directrices de la Free Software Foundation,
+ el texto legal vinculante y oficial de la Licencia Pública General de GNU es el
+ original en idioma inglés que se incluye a continuación en la segunda sección.]
+
+                            PREÁMBULO
+
+  La Licencia Pública General de GNU (GNU GPL) es una licencia libre con "copyleft"
+para software y otro tipo de obras.
+
+  Las licencias para la mayoría del software y otras obras prácticas están diseñadas
+para restringir la libertad de compartir y cambiar las obras. Por el contrario, la
+Licencia Pública General de GNU está destinada a garantizar su libertad de compartir
+y modificar todas las versiones de un programa: para asegurarse de que permanezca
+como software libre para todos sus usuarios. Nosotros, la Free Software Foundation,
+usamos la Licencia Pública General de GNU para la mayor parte de nuestro software;
+también se aplica a cualquier otra obra publicada de esta manera por sus autores.
+Usted también puede aplicarla a sus propios programas.
+
+  Cuando hablamos de software libre, nos referimos a libertad, no a precio. Nuestras
+Licencias Públicas Generales están diseñadas para garantizar que usted tenga la
+libertad de distribuir copias de software libre (y cobrar por ellas si lo desea), que
+reciba el código fuente o pueda obtenerlo si lo desea, que pueda modificar el software
+o usar partes de él en nuevos programas libres, y que sepa que puede hacer estas cosas.
+
+  Para proteger sus derechos, necesitamos evitar que otros le nieguen estos derechos
+o le pidan que renuncie a ellos. Por lo tanto, usted tiene ciertas responsabilidades si
+distribuye copias del software o si lo modifica: responsabilidades de respetar la
+libertad de los demás.
+
+  Por ejemplo, si distribuye copias de un programa de este tipo, ya sea gratis o por una
+tarifa, debe transmitir a los destinatarios las mismas libertades que usted recibió. Debe
+asegurarse de que ellos también reciban o puedan obtener el código fuente. Y debe mostrarles
+estos términos para que conozcan sus derechos.
+
+  Los desarrolladores que usan la GNU GPL protegen sus derechos en dos pasos:
+(1) afirman los derechos de autor sobre el software, y (2) le ofrecen esta Licencia, que le
+otorga permiso legal para copiarlo, distribuirlo y/o modificarlo.
+
+  Para la protección de los desarrolladores y autores, la GPL explica claramente que no hay
+garantía para este software libre. Por el bien de los usuarios y de los autores, la GPL
+requiere que las versiones modificadas se marquen como modificadas, para que sus problemas no
+se atribuyan erróneamente a los autores de versiones anteriores.
+
+                       TÉRMINOS Y CONDICIONES
+
+0. Definiciones.
+"Esta Licencia" se refiere a la versión 3 de la Licencia Pública General de GNU.
+"Derechos de autor" también se refiere a leyes similares a los derechos de autor que se aplican
+a otros tipos de obras, como las máscaras de semiconductores.
+"El Programa" se refiere a cualquier obra protegida por derechos de autor bajo esta Licencia.
+Cada licenciatario se denomina "usted". Los "licenciatarios" y los "destinatarios" pueden ser
+personas u organizaciones.
+"Modificar" una obra significa copiar o adaptar toda o parte de la obra de una manera que requiera
+el permiso de derechos de autor, además de hacer una copia exacta. La obra resultante se denomina
+una "versión modificada" de la obra anterior o una obra "basada en" la obra anterior.
+Una "obra cubierta" se refiere al Programa no modificado o a una obra basada en el Programa.
+
+1. Código Fuente.
+El "código fuente" de una obra significa la forma preferida de la obra para realizar modificaciones
+en ella. El "código objeto" significa cualquier forma no fuente de una obra.
+El "Código Fuente Correspondiente" para una obra en forma de código objeto significa todo el código
+fuente necesario para generar, instalar y (para una obra ejecutable) ejecutar el código objeto y
+modificar la obra, incluidos los scripts para controlar esas actividades.
+
+2. Permisos Básicos.
+Todos los derechos otorgados bajo esta Licencia se otorgan por el término de los derechos de autor
+sobre el Programa, y son irrevocables siempre que se cumplan las condiciones establecidas. Esta
+Licencia afirma explícitamente su permiso ilimitado para ejecutar el Programa sin modificar.
+Usted puede hacer, ejecutar y propagar obras cubiertas que no transfiera a otros, sin condiciones,
+siempre que su licencia permanezca en vigor.
+
+3. Protección de los Derechos Legales frente a Leyes Anti-Elusión.
+Ninguna obra cubierta se considerará parte de una medida tecnológica efectiva en virtud de
+ninguna ley aplicable que cumpla con las obligaciones del artículo 11 del tratado de derechos
+de autor de la OMPI adoptado el 20 de diciembre de 1996, o leyes similares que prohíban o
+restrinjan la elusión de tales medidas.
+
+4. Transmisión de Copias Literales.
+Usted puede transmitir copias literales del código fuente del Programa tal como lo recibe, en
+cualquier medio, siempre que publique de manera visible y adecuada en cada copia un aviso de
+derechos de autor apropiado; mantenga intactos todos los avisos que indiquen que esta Licencia
+y los términos no permisivos agregados de conformidad con la sección 7 se aplican al código;
+mantenga intactos todos los avisos sobre la ausencia de cualquier garantía; y entregue a todos
+los destinatarios una copia de esta Licencia junto con el Programa.
+
+5. Transmisión de Versiones Modificadas de la Fuente.
+Puede transmitir una obra basada en el Programa, o las modificaciones para producirlo a partir
+del Programa, en forma de código fuente bajo los términos de la sección 4, siempre que cumpla
+con todas estas condiciones:
+  a) La obra debe llevar avisos destacados que indiquen que usted la modificó y la fecha respectiva.
+  b) La obra debe llevar avisos destacados que indiquen que se publica bajo esta Licencia.
+  c) Debe licenciar la obra completa, en su conjunto, bajo esta Licencia a cualquier persona que
+     entre en posesión de una copia.
+  d) Si la obra tiene interfaces de usuario interactivas, cada una debe mostrar Avisos Legales Apropiados.
+
+6. Transmisión en Formas No Fuente (Binarios/Ejecutables).
+Puede transmitir una obra cubierta en forma de código objeto bajo los términos de las secciones 4 y 5,
+siempre que también transmita el Código Fuente Correspondiente legible por máquina bajo los términos
+de esta Licencia (a través de un medio físico, oferta escrita, descarga web equivalente o red peer-to-peer).
+
+7. Términos Adicionales.
+Los "permisos adicionales" son términos que complementan los términos de esta Licencia haciendo
+excepciones a una o más de sus condiciones.
+
+8. Rescisión.
+No puede propagar o modificar una obra cubierta excepto como se proporciona expresamente en esta Licencia.
+Cualquier intento de propagarlo o modificarlo de otra manera es nulo y rescinde automáticamente sus derechos.
+
+9. No se Requiere Aceptación para Tener Copias.
+No está obligado a aceptar esta Licencia para recibir o ejecutar una copia del Programa. Sin embargo,
+nada más le otorga permiso para propagar o modificar ninguna obra cubierta.
+
+10. Licencia Automática de Destinatarios Posteriores.
+Cada vez que transmite una obra cubierta, el destinatario recibe automáticamente una licencia de los
+licenciantes originales para ejecutar, modificar y propagar esa obra, sujeta a esta Licencia.
+
+11. Patentes.
+Cada colaborador le otorga una licencia de patente no exclusiva, mundial y libre de regalías bajo las
+reivindicaciones de patente esenciales del colaborador para crear, usar, vender, importar y ejecutar el Programa.
+
+12. No Renuncia a la Libertad de Otros.
+Si se le imponen condiciones que contradigan las condiciones de esta Licencia, no lo eximen de las
+condiciones de esta Licencia. Si no puede transmitir para satisfacer simultáneamente sus obligaciones,
+no puede transmitir el Programa en absoluto.
+
+15. Exclusión de Garantía.
+NO HAY GARANTÍA PARA EL PROGRAMA, EN LA MEDIDA EN QUE LO PERMITA LA LEY APLICABLE. EL PROGRAMA SE PROPORCIONA
+"TAL CUAL" SIN GARANTÍA DE NINGÚN TIPO, YA SEA EXPRESA O IMPLÍCITA. TODO EL RIESGO EN CUANTO A LA CALIDAD Y EL
+RENDIMIENTO DEL PROGRAMA ES CON USTED.
+
+16. Limitación de Responsabilidad.
+EN NINGÚN CASO NINGÚN TITULAR DE DERECHOS DE AUTOR SERÁ RESPONSABLE ANTE USTED POR DAÑOS GENERALES, ESPECIALES,
+INCIDENTALES O CONSECUENTES QUE SURJAN DEL USO O LA IMPOSIBILIDAD DE USAR EL PROGRAMA.
+
+
+================================================================================
+                    GNU GENERAL PUBLIC LICENSE (GPLv3)
                        Version 3, 29 June 2007
+                       (Official English Text)
+================================================================================
 
  Copyright (C) 2026 Damian Medina Cooli
  Everyone is permitted to copy and distribute verbatim copies
