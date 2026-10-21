@@ -169,6 +169,21 @@ docker compose logs -f app
 
 ---
 
+## 💖 Donaciones y Apoyo al Proyecto (Donations)
+
+Si este software te resulta útil o deseas apoyar el desarrollo continuo y mantenimiento de este proyecto de código abierto, puedes realizar una contribución voluntaria a través de las siguientes direcciones de criptomonedas:
+
+| Criptomoneda | Red / Network | Dirección de Billetera (Wallet Address) |
+| :--- | :--- | :--- |
+| **USDT** | **TRC-20** (Tron) | `TCKoncjeSuX5AwNYhPhnxPrwGvehY5ZPKB` |
+| **USDT** | **X Layer** | `XKO55abAb884730D71627fA5c0006FEB70E56042f1A` |
+| **PYUSD** | **X Layer** | `XKO55abAb884730D71627fA5c0006FEB70E56042f1A` |
+| **PYUSD** | **Solana** | `HgQrLHGCWQkykXGrgVTKPQ4Xr6AY4mEhHexnYw35QpGM` |
+
+> *¡Muchas gracias por apoyar el software libre y la comunidad de código abierto! 🙌*
+
+---
+
 ## 👨‍💻 Autor y Contacto
 * **Autor:** Damian Medina Cooli
 * **Licencia:** GNU General Public License v3.0 (GPLv3)
