@@ -87,8 +87,10 @@ async function initDb() {
     for (const n of INSTITUCIONES) await q("INSERT INTO catalogs(tipo,nombre) VALUES('institucion',$1)", [n]);
     for (const n of ESPECIALIDADES) await q("INSERT INTO catalogs(tipo,nombre) VALUES('especialidad',$1)", [n]);
   }
-  if (!(await q("SELECT 1 FROM catalogs WHERE tipo='producto' LIMIT 1")).rowCount) {
-    for (const n of PRODUCTOS_INICIALES) await q("INSERT INTO catalogs(tipo,nombre) VALUES('producto',$1) ON CONFLICT DO NOTHING", [n]);
+  await q('ALTER TABLE catalogs ADD COLUMN IF NOT EXISTS codigo TEXT');
+  await q("UPDATE catalogs SET tipo='muestra' WHERE tipo='producto' AND codigo IS NULL");
+  if (!(await q("SELECT 1 FROM catalogs WHERE tipo='muestra' LIMIT 1")).rowCount) {
+    for (const n of PRODUCTOS_INICIALES) await q("INSERT INTO catalogs(tipo,nombre) VALUES('muestra',$1) ON CONFLICT DO NOTHING", [n]);
   }
   await q(`CREATE TABLE IF NOT EXISTS geography(id SERIAL PRIMARY KEY, estado TEXT NOT NULL, ciudad TEXT NOT NULL, UNIQUE(estado, ciudad))`);
   await q(`CREATE TABLE IF NOT EXISTS documentation(id SERIAL PRIMARY KEY, titulo TEXT NOT NULL, url TEXT NOT NULL, fecha DATE, descripcion TEXT)`);
@@ -295,40 +297,71 @@ app.get('/api/logs', auth, requireLogs, wrap(async (req, res) => {
 
 // ---------- Catálogos ----------
 app.get('/api/catalogs', auth, wrap(async (req, res) => {
-  const r = (await q('SELECT id,tipo,nombre FROM catalogs ORDER BY nombre')).rows;
+  const r = (await q('SELECT id,tipo,nombre,codigo FROM catalogs ORDER BY codigo NULLS LAST, nombre')).rows;
   res.json({
     institucion: r.filter(x => x.tipo === 'institucion'),
     especialidad: r.filter(x => x.tipo === 'especialidad'),
+    muestra: r.filter(x => x.tipo === 'muestra'),
     producto: r.filter(x => x.tipo === 'producto')
   });
 }));
 app.post('/api/catalogs', auth, admin, wrap(async (req, res) => {
-  const { tipo, nombre } = req.body, n = (nombre || '').trim();
-  if (!['institucion', 'especialidad', 'producto'].includes(tipo) || !n) return res.status(400).json({ error: 'Datos inválidos' });
-  await q('INSERT INTO catalogs(tipo,nombre) VALUES($1,$2) ON CONFLICT DO NOTHING', [tipo, n]);
-  await logActivity(req, 'CREAR_CATALOGO', 'Configuración / Catálogos', `Agregó ${tipo}: "${n}"`);
+  const { tipo, nombre, codigo } = req.body;
+  const n = (nombre || '').trim();
+  const cod = (codigo || '').trim() || null;
+  if (!['institucion', 'especialidad', 'muestra', 'producto'].includes(tipo) || !n) {
+    return res.status(400).json({ error: 'Datos inválidos' });
+  }
+  if (cod) {
+    const exist = (await q('SELECT id FROM catalogs WHERE tipo=$1 AND (lower(nombre)=lower($2) OR (codigo IS NOT NULL AND lower(codigo)=lower($3)))', [tipo, n, cod])).rows[0];
+    if (exist) {
+      await q('UPDATE catalogs SET nombre=$1, codigo=$2 WHERE id=$3', [n, cod, exist.id]);
+    } else {
+      await q('INSERT INTO catalogs(tipo,nombre,codigo) VALUES($1,$2,$3)', [tipo, n, cod]);
+    }
+  } else {
+    await q('INSERT INTO catalogs(tipo,nombre,codigo) VALUES($1,$2,$3) ON CONFLICT (tipo, nombre) DO NOTHING', [tipo, n, null]);
+  }
+  await logActivity(req, 'CREAR_CATALOGO', 'Configuración / Catálogos', `Agregó ${tipo}: "${n}"${cod ? ` (Cod: ${cod})` : ''}`);
   res.json({ ok: true });
 }));
 app.post('/api/catalogs/bulk', auth, admin, wrap(async (req, res) => {
   const { tipo, items } = req.body || {};
-  if (!['institucion', 'especialidad', 'producto'].includes(tipo) || !Array.isArray(items)) {
+  if (!['institucion', 'especialidad', 'muestra', 'producto'].includes(tipo) || !Array.isArray(items)) {
     return res.status(400).json({ error: 'Datos inválidos' });
   }
   let added = 0;
   for (const raw of items) {
-    const n = String(raw || '').trim();
+    let n = '', cod = null;
+    if (typeof raw === 'object' && raw !== null) {
+      n = String(raw.nombre || '').trim();
+      cod = raw.codigo ? String(raw.codigo).trim() : null;
+    } else {
+      n = String(raw || '').trim();
+    }
     if (!n) continue;
-    const r = await q('INSERT INTO catalogs(tipo,nombre) VALUES($1,$2) ON CONFLICT DO NOTHING', [tipo, n]);
-    if (r.rowCount > 0) added++;
+
+    if (cod) {
+      const exist = (await q('SELECT id FROM catalogs WHERE tipo=$1 AND (lower(nombre)=lower($2) OR (codigo IS NOT NULL AND lower(codigo)=lower($3)))', [tipo, n, cod])).rows[0];
+      if (exist) {
+        await q('UPDATE catalogs SET nombre=$1, codigo=$2 WHERE id=$3', [n, cod, exist.id]);
+      } else {
+        const r = await q('INSERT INTO catalogs(tipo,nombre,codigo) VALUES($1,$2,$3)', [tipo, n, cod]);
+        if (r.rowCount > 0) added++;
+      }
+    } else {
+      const r = await q('INSERT INTO catalogs(tipo,nombre,codigo) VALUES($1,$2,$3) ON CONFLICT (tipo, nombre) DO NOTHING', [tipo, n, null]);
+      if (r.rowCount > 0) added++;
+    }
   }
   await logActivity(req, 'IMPORTAR_CATALOGO', 'Configuración / Catálogos', `Importó ${added} elemento(s) en catálogo ${tipo}`);
   res.json({ ok: true, added, total: items.length });
 }));
 app.delete('/api/catalogs/:id', auth, admin, wrap(async (req, res) => {
   const id = +req.params.id;
-  const c = (await q('SELECT tipo, nombre FROM catalogs WHERE id=$1', [id])).rows[0];
+  const c = (await q('SELECT tipo, nombre, codigo FROM catalogs WHERE id=$1', [id])).rows[0];
   await q('DELETE FROM catalogs WHERE id=$1', [id]);
-  await logActivity(req, 'ELIMINAR_CATALOGO', 'Configuración / Catálogos', `Eliminó catálogo #${id}${c ? ` (${c.tipo}: "${c.nombre}")` : ''}`);
+  await logActivity(req, 'ELIMINAR_CATALOGO', 'Configuración / Catálogos', `Eliminó catálogo #${id}${c ? ` (${c.tipo}: "${c.nombre}"${c.codigo ? ` [Cod: ${c.codigo}]` : ''})` : ''}`);
   res.json({ ok: true });
 }));
 

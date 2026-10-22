@@ -336,7 +336,7 @@ const ALLF = SECTIONS.flatMap(s => s[1]);
 const LABEL = Object.fromEntries([...ALLF.map(f => [f[0], f[1]]), ['tipo_visita','Tipo de visita'], ['ubicacion','Ubicación'], ['muestras_detalle','Muestras entregadas (detalle)'], ['cedula','DNI / Cédula']]);
 const PREFILL = ['cedula','lugar_visita','estado','ciudad','zona','razon_social','direccion','cliente','fecha_nacimiento','nro_colegiado','especialidad','operaciones_mensuales','pacientes_diarios','costo_consultas','horario_trabajo','otra_institucion','horario_otra_institucion','encargado','responsable','contacto','mas_info_contacto','correo','instagram','facebook','otras_redes','secretaria_nombre','secretaria_fecha_nacimiento','secretaria_telefono','secretaria_facebook','secretaria_instagram','secretaria_otras_redes','muestras_entregadas','muestras_detalle'];
 
-let me = null, cat = { institucion: [], especialidad: [], producto: [] }, geo = {}, rows = [], page = 0, view = 'dash';
+let me = null, cat = { institucion: [], especialidad: [], muestra: [], producto: [] }, geo = {}, rows = [], page = 0, view = 'dash';
 const PS = 25;
 
 // ---------- Arranque / login ----------
@@ -356,9 +356,13 @@ async function boot() {
 
   try {
     cat = await api('/api/catalogs');
+    cat.muestra = cat.muestra || [];
+    cat.producto = cat.producto || [];
     await dbSaveCache('catalogs', cat);
   } catch (e) {
-    cat = (await dbGetCache('catalogs')) || { institucion: [], especialidad: [], producto: [] };
+    cat = (await dbGetCache('catalogs')) || { institucion: [], especialidad: [], muestra: [], producto: [] };
+    cat.muestra = cat.muestra || [];
+    cat.producto = cat.producto || [];
   }
 
   try {
@@ -1014,7 +1018,9 @@ async function vNueva() {
 
   const openMuestrasModal = () => {
     const current = parseMuestras(hidDetalle ? hidDetalle.value : '');
-    const prods = (cat.producto && cat.producto.length) ? cat.producto.map(p => p.nombre) : ['Prokal Qx', 'Prokal Carbo Neutro', 'Prokal Proteína', 'Prokal Fibra', 'Prokal Vit'];
+    const prods = (cat.muestra && cat.muestra.length)
+      ? cat.muestra.map(p => p.nombre)
+      : (cat.producto && cat.producto.length ? cat.producto.map(p => p.nombre) : ['Prokal Qx', 'Prokal Carbo Neutro', 'Prokal Proteína', 'Prokal Fibra', 'Prokal Vit']);
 
     const modal = document.createElement('div');
     modal.className = 'modal';
@@ -1595,27 +1601,16 @@ async function vConfig(tab) {
         toast(e.message, 1);
       }
     });
-  } else {
+  } else if (tab === 'institucion' || tab === 'especialidad') {
     cat = await api('/api/catalogs');
-    const isProd = tab === 'producto';
+    cat.muestra = cat.muestra || [];
+    cat.producto = cat.producto || [];
     main.innerHTML = tabs + `
       <div class="card">
         <div class="row2" style="flex-wrap:wrap;gap:10px">
-          <input id="cn" style="max-width:320px" placeholder="${isProd ? 'Nombre del nuevo producto / muestra' : 'Nuevo elemento'}">
+          <input id="cn" style="max-width:320px" placeholder="Nuevo elemento">
           <button class="btn" id="ca">Agregar</button>
-          ${isProd ? `
-            <input type="file" id="csv_import_file" accept=".csv,text/csv,text/plain" style="display:none">
-            <button type="button" class="btn sec" id="btn_import_csv" style="display:inline-flex;align-items:center;gap:6px" title="Importar lista de productos desde archivo CSV o texto plano">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              Importar CSV
-            </button>
-          ` : ''}
         </div>
-        ${isProd ? `
-          <div style="font-size:12px;color:var(--mut);margin-top:8px">
-            💡 Puedes importar un archivo CSV o TXT con la lista de productos (un producto por fila).
-          </div>
-        ` : ''}
       </div>
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -1636,103 +1631,379 @@ async function vConfig(tab) {
       } catch (e) { toast(e.message, 1); }
     };
 
-    if (isProd) {
-      const fileInput = $('#csv_import_file');
-      $('#btn_import_csv').onclick = () => fileInput.click();
-      fileInput.onchange = e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async evt => {
-          const text = evt.target.result;
-          const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-          const items = [];
-          for (let line of lines) {
-            let val = line;
-            if (val.startsWith('"')) {
-              const m = val.match(/^"([^"]+)"/);
-              if (m) val = m[1];
-              else val = val.replace(/^"|"$/g, '');
-            } else if (val.includes(',')) {
-              val = val.split(',')[0].trim();
-            } else if (val.includes(';')) {
-              val = val.split(';')[0].trim();
-            }
-            val = val.replace(/^["']|["']$/g, '').trim();
-            if (items.length === 0 && ['producto','productos','nombre','item','items','name','product','muestras','descripcion'].includes(val.toLowerCase())) {
-              continue;
-            }
-            if (val && !items.includes(val)) {
-              items.push(val);
-            }
-          }
-          if (!items.length) {
-            fileInput.value = '';
-            return toast('No se encontraron filas con productos válidos en el archivo', 1);
-          }
-          openImportPreviewModal(items);
-          fileInput.value = '';
-        };
-        reader.readAsText(file);
-      };
-
-      function openImportPreviewModal(items) {
-        const m = document.createElement('div');
-        m.className = 'modal';
-        m.innerHTML = `
-          <div class="card" style="max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-              <h2 style="margin:0;font-size:18px;display:inline-flex;align-items:center;gap:8px">
-                📥 Importar Productos desde CSV
-              </h2>
-              <button type="button" class="btn sec sm" id="imp_close" style="padding:2px 8px">✕</button>
-            </div>
-            <p style="margin:0 0 10px;font-size:13px;color:var(--mut)">
-              Se detectaron <strong>${items.length}</strong> productos listados por fila. Revisa la lista antes de agregarlos al catálogo:
-            </p>
-            <div style="flex:1;overflow-y:auto;max-height:300px;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin-bottom:16px">
-              <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.8">
-                ${items.map(it => `<li><strong>${esc(it)}</strong></li>`).join('')}
-              </ol>
-            </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end">
-              <button class="btn sec" id="imp_cancel">Cancelar</button>
-              <button class="btn" id="imp_confirm">Confirmar e Importar (${items.length})</button>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(m);
-        const close = () => m.remove();
-        m.querySelector('#imp_close').onclick = close;
-        m.querySelector('#imp_cancel').onclick = close;
-        m.onclick = e => { if (e.target === m) close(); };
-
-        m.querySelector('#imp_confirm').onclick = async () => {
-          try {
-            m.querySelector('#imp_confirm').disabled = true;
-            m.querySelector('#imp_confirm').textContent = 'Importando…';
-            const res = await api('/api/catalogs/bulk', {
-              method: 'POST',
-              body: { tipo: 'producto', items }
-            });
-            close();
-            toast(`✅ Importación completada: ${res.added} nuevos productos agregados (${res.total - res.added} ya existían)`);
-            vConfig('producto');
-          } catch (err) {
-            toast(err.message, 1);
-            m.querySelector('#imp_confirm').disabled = false;
-            m.querySelector('#imp_confirm').textContent = `Confirmar e Importar (${items.length})`;
-          }
-        };
-      }
-    }
-
     main.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       await api('/api/catalogs/' + b.dataset.del, { method: 'DELETE' });
       vConfig(tab);
     });
+  } else {
+    // tab === 'producto' -> Muestras / Productos con 2 categorías
+    cat = await api('/api/catalogs');
+    cat.muestra = cat.muestra || [];
+    cat.producto = cat.producto || [];
+
+    const isMuestras = subcat === 'muestras';
+    const muestrasList = cat.muestra || [];
+    const productosList = cat.producto || [];
+
+    main.innerHTML = tabs + `
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div class="seg" style="display:inline-flex;margin:0">
+            <button class="${isMuestras ? 'on' : ''}" id="subtab_muestras" style="display:inline-flex;align-items:center;gap:6px">
+              <span>📦 1) Muestras</span>
+              <span class="badge" style="font-size:11px;padding:1px 6px">${muestrasList.length}</span>
+            </button>
+            <button class="${!isMuestras ? 'on' : ''}" id="subtab_productos" style="display:inline-flex;align-items:center;gap:6px">
+              <span>🏷️ 2) Productos (Cod. | Producto)</span>
+              <span class="badge" style="font-size:11px;padding:1px 6px">${productosList.length}</span>
+            </button>
+          </div>
+          <button type="button" class="btn sec" id="btn_open_import_modal" style="display:inline-flex;align-items:center;gap:6px;font-weight:600">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            📥 Importar CSV
+          </button>
+        </div>
+      </div>
+
+      ${isMuestras ? `
+        <!-- Categoría 1: Muestras (solo nombres) -->
+        <div class="card">
+          <h2 style="font-size:16px;margin:0 0 12px">Agregar Muestra Médica</h2>
+          <div class="row2" style="flex-wrap:wrap;gap:10px">
+            <input id="mue_nom" style="max-width:380px" placeholder="Nombre de la muestra (ej: Prokal Qx)">
+            <button class="btn" id="mue_add">Agregar Muestra</button>
+          </div>
+          <div style="font-size:12px;color:var(--mut);margin-top:8px">
+            💡 Nombres de muestras médicas que los visitadores entregan y registran en las visitas médicas.
+          </div>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <span style="font-size:13px;color:var(--mut);font-weight:600">${muestrasList.length} muestra(s) registrada(s)</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            ${muestrasList.map(o => `<span class="chip" style="font-size:13px;padding:6px 12px">${esc(o.nombre)}<button data-del="${o.id}" title="Quitar">×</button></span>`).join('') || '<span style="color:var(--mut)">Sin muestras registradas</span>'}
+          </div>
+        </div>
+      ` : `
+        <!-- Categoría 2: Productos (Cod. | Producto) -->
+        <div class="card">
+          <h2 style="font-size:16px;margin:0 0 12px">Agregar Producto al Catálogo</h2>
+          <div class="row2" style="flex-wrap:wrap;gap:10px">
+            <input id="prd_cod" style="max-width:140px" placeholder="Cod. (ej: 001)">
+            <input id="prd_nom" style="flex:1;min-width:240px;max-width:420px" placeholder="Nombre del producto">
+            <button class="btn" id="prd_add">Agregar Producto</button>
+          </div>
+          <div style="font-size:12px;color:var(--mut);margin-top:8px">
+            💡 Catálogo comercial de productos de la empresa en formato <strong>Cod. | Producto</strong>.
+          </div>
+        </div>
+        <div class="card scroll">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <span style="font-size:13px;color:var(--mut);font-weight:600">${productosList.length} producto(s) en catálogo</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="border-bottom:2px solid var(--bd);text-align:left">
+                <th style="width:130px;padding:10px 14px">Cod.</th>
+                <th style="padding:10px 14px">Producto</th>
+                <th style="width:90px;text-align:right;padding:10px 14px">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${productosList.length ? productosList.map(p => `
+                <tr style="border-bottom:1px solid var(--bd)">
+                  <td style="padding:10px 14px;vertical-align:middle">
+                    <span class="badge" style="background:rgba(15,157,138,.12);color:var(--ac);font-family:monospace;font-size:13px;font-weight:700">
+                      ${esc(p.codigo || '—')}
+                    </span>
+                  </td>
+                  <td style="padding:10px 14px;vertical-align:middle;font-weight:600">
+                    ${esc(p.nombre)}
+                  </td>
+                  <td style="padding:10px 14px;text-align:right;vertical-align:middle">
+                    <button class="btn sec sm dg" data-del="${p.id}" title="Eliminar producto" style="padding:4px 10px">✕ Quitar</button>
+                  </td>
+                </tr>
+              `).join('') : `
+                <tr>
+                  <td colspan="3" style="text-align:center;color:var(--mut);padding:24px">Sin productos registrados en el catálogo</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      `}
+    `;
+
+    // Cambio de subcategoría
+    $('#subtab_muestras').onclick = () => vConfig('producto', 'muestras');
+    $('#subtab_productos').onclick = () => vConfig('producto', 'productos');
+
+    if (isMuestras) {
+      $('#mue_add').onclick = async () => {
+        const nom = $('#mue_nom').value.trim();
+        if (!nom) return toast('Debe ingresar el nombre de la muestra', 1);
+        try {
+          await api('/api/catalogs', { method: 'POST', body: { tipo: 'muestra', nombre: nom } });
+          toast('Muestra agregada');
+          vConfig('producto', 'muestras');
+        } catch (e) { toast(e.message, 1); }
+      };
+    } else {
+      $('#prd_add').onclick = async () => {
+        const cod = $('#prd_cod').value.trim();
+        const nom = $('#prd_nom').value.trim();
+        if (!nom) return toast('Debe ingresar el nombre del producto', 1);
+        try {
+          await api('/api/catalogs', { method: 'POST', body: { tipo: 'producto', nombre: nom, codigo: cod } });
+          toast('Producto agregado al catálogo');
+          vConfig('producto', 'productos');
+        } catch (e) { toast(e.message, 1); }
+      };
+    }
+
+    // Modal de importación unificado
+    $('#btn_open_import_modal').onclick = () => {
+      openUnifiedImportModal(subcat);
+    };
+
+    main.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      await api('/api/catalogs/' + b.dataset.del, { method: 'DELETE' });
+      vConfig('producto', subcat);
+    });
   }
-  main.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => vConfig(b.dataset.tab));
+  main.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => vConfig(b.dataset.tab, 'muestras'));
+}
+
+function openUnifiedImportModal(initialSubcat) {
+  let impType = (initialSubcat === 'productos') ? 'productos' : 'muestras';
+  let rawFileContent = null;
+  let parsedItems = [];
+
+  const m = document.createElement('div');
+  m.className = 'modal';
+  m.innerHTML = `
+    <div class="card" style="max-width:580px;width:100%;max-height:88vh;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0;font-size:18px;display:inline-flex;align-items:center;gap:8px">
+          📥 Importar desde Archivo CSV
+        </h2>
+        <button type="button" class="btn sec sm" id="imp_close" style="padding:2px 8px">✕</button>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;display:block;margin-bottom:6px">
+          ¿Qué deseas importar?
+        </label>
+        <div class="seg" style="display:inline-flex;width:100%;margin:0">
+          <button type="button" id="imp_tab_mue" class="${impType === 'muestras' ? 'on' : ''}" style="flex:1">
+            📦 1) Muestras (Lista simple)
+          </button>
+          <button type="button" id="imp_tab_prd" class="${impType === 'productos' ? 'on' : ''}" style="flex:1">
+            🏷️ 2) Productos (Cod. | Producto)
+          </button>
+        </div>
+      </div>
+
+      <div id="imp_guide" style="background:rgba(15,157,138,.07);border:1px solid rgba(15,157,138,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--tx);margin-bottom:14px;line-height:1.5">
+      </div>
+
+      <div style="margin-bottom:14px">
+        <input type="file" id="imp_file" accept=".csv,text/csv,text/plain" style="display:none">
+        <button type="button" class="btn sec" id="imp_pick_btn" style="width:100%;justify-content:center;padding:12px;border:2px dashed var(--bd);background:var(--card);font-weight:600">
+          📁 Seleccionar archivo CSV o TXT
+        </button>
+        <div id="imp_file_info" style="font-size:12px;color:var(--mut);margin-top:6px;text-align:center"></div>
+      </div>
+
+      <div id="imp_preview_box" style="display:none;flex:1;overflow-y:auto;max-height:240px;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:16px">
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn sec" id="imp_cancel">Cancelar</button>
+        <button type="button" class="btn" id="imp_submit" disabled>Confirmar e Importar</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  m.querySelector('#imp_close').onclick = close;
+  m.querySelector('#imp_cancel').onclick = close;
+  m.onclick = e => { if (e.target === m) close(); };
+
+  const updateGuide = () => {
+    const g = m.querySelector('#imp_guide');
+    if (impType === 'muestras') {
+      g.innerHTML = `
+        <strong>Formato de Muestras:</strong> Archivo CSV o TXT tipo lista simple donde cada fila contiene el nombre de una muestra médica.<br>
+        <code style="background:var(--card);padding:2px 6px;border-radius:4px;display:inline-block;margin-top:4px;font-size:11px">Ejemplo: Prokal Qx</code>
+      `;
+    } else {
+      g.innerHTML = `
+        <strong>Formato de Productos:</strong> Archivo CSV con 2 columnas/espacios (1ra: <strong>Cod.</strong> y 2da: <strong>Producto</strong>), separados por coma, punto y coma, tabulador o espacios.<br>
+        <code style="background:var(--card);padding:2px 6px;border-radius:4px;display:inline-block;margin-top:4px;font-size:11px">Ejemplo: 001, Prokal Proteína 500g &nbsp;|&nbsp; PK-02; Prokal Fibra</code>
+      `;
+    }
+  };
+
+  const parseAndRender = () => {
+    if (!rawFileContent) return;
+    const lines = rawFileContent.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    parsedItems = [];
+
+    if (impType === 'muestras') {
+      for (const line of lines) {
+        let val = line.replace(/^["']|["']$/g, '').trim();
+        if (val.includes(',') || val.includes(';')) {
+          val = val.split(/[,;]/)[0].trim().replace(/^["']|["']$/g, '');
+        }
+        const low = val.toLowerCase();
+        if (['muestra','muestras','producto','productos','nombre','item','items','descripcion'].includes(low)) {
+          continue;
+        }
+        if (val && !parsedItems.includes(val)) {
+          parsedItems.push(val);
+        }
+      }
+    } else {
+      for (const line of lines) {
+        let cod = '', nom = '';
+        if (line.includes('\t')) {
+          const p = line.split('\t').map(s => s.trim().replace(/^["']|["']$/g, ''));
+          cod = p[0] || '';
+          nom = p.slice(1).join(' ').trim();
+        } else if (line.includes(';')) {
+          const p = line.split(';').map(s => s.trim().replace(/^["']|["']$/g, ''));
+          cod = p[0] || '';
+          nom = p.slice(1).join(';').trim();
+        } else if (line.includes(',')) {
+          const p = line.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+          cod = p[0] || '';
+          nom = p.slice(1).join(',').trim();
+        } else if (line.includes('|')) {
+          const p = line.split('|').map(s => s.trim().replace(/^["']|["']$/g, ''));
+          cod = p[0] || '';
+          nom = p.slice(1).join('|').trim();
+        } else {
+          const match = line.match(/^(\S+)\s+(.+)$/);
+          if (match) {
+            cod = match[1].replace(/^["']|["']$/g, '').trim();
+            nom = match[2].replace(/^["']|["']$/g, '').trim();
+          } else {
+            nom = line.replace(/^["']|["']$/g, '').trim();
+          }
+        }
+        const cLow = cod.toLowerCase(), nLow = nom.toLowerCase();
+        if (['cod','cod.','codigo','code','id'].includes(cLow) && ['producto','nombre','descripcion','desc','name','item'].includes(nLow)) {
+          continue;
+        }
+        if (!nom && cod) { nom = cod; cod = ''; }
+        if (nom) {
+          if (!parsedItems.some(x => x.nombre.toLowerCase() === nom.toLowerCase())) {
+            parsedItems.push({ codigo: cod, nombre: nom });
+          }
+        }
+      }
+    }
+
+    const pBox = m.querySelector('#imp_preview_box');
+    const btnSub = m.querySelector('#imp_submit');
+
+    if (!parsedItems.length) {
+      pBox.style.display = 'block';
+      pBox.innerHTML = '<div style="color:var(--dg);text-align:center;padding:12px">⚠️ No se encontraron elementos válidos con el formato seleccionado.</div>';
+      btnSub.disabled = true;
+      btnSub.textContent = 'Confirmar e Importar';
+      return;
+    }
+
+    pBox.style.display = 'block';
+    if (impType === 'muestras') {
+      pBox.innerHTML = `
+        <div style="font-size:12px;color:var(--mut);margin-bottom:8px"><strong>${parsedItems.length}</strong> muestra(s) lista(s) para importar:</div>
+        <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.7">
+          ${parsedItems.map(it => `<li><b>${esc(it)}</b></li>`).join('')}
+        </ol>
+      `;
+    } else {
+      pBox.innerHTML = `
+        <div style="font-size:12px;color:var(--mut);margin-bottom:8px"><strong>${parsedItems.length}</strong> producto(s) listo(s) para importar (Cod. | Producto):</div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:1px solid var(--bd);text-align:left">
+              <th style="padding:4px 8px;width:100px">Cod.</th>
+              <th style="padding:4px 8px">Producto</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${parsedItems.map(it => `
+              <tr style="border-bottom:1px solid rgba(0,0,0,.05)">
+                <td style="padding:4px 8px"><span class="badge" style="background:rgba(15,157,138,.12);color:var(--ac);font-family:monospace">${esc(it.codigo || '—')}</span></td>
+                <td style="padding:4px 8px"><b>${esc(it.nombre)}</b></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    btnSub.disabled = false;
+    btnSub.textContent = `Confirmar e Importar (${parsedItems.length} ${impType === 'muestras' ? 'muestras' : 'productos'})`;
+  };
+
+  updateGuide();
+
+  m.querySelector('#imp_tab_mue').onclick = () => {
+    impType = 'muestras';
+    m.querySelector('#imp_tab_mue').classList.add('on');
+    m.querySelector('#imp_tab_prd').classList.remove('on');
+    updateGuide();
+    parseAndRender();
+  };
+  m.querySelector('#imp_tab_prd').onclick = () => {
+    impType = 'productos';
+    m.querySelector('#imp_tab_prd').classList.add('on');
+    m.querySelector('#imp_tab_mue').classList.remove('on');
+    updateGuide();
+    parseAndRender();
+  };
+
+  const fInput = m.querySelector('#imp_file');
+  m.querySelector('#imp_pick_btn').onclick = () => fInput.click();
+  fInput.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    m.querySelector('#imp_file_info').textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      rawFileContent = evt.target.result;
+      parseAndRender();
+    };
+    reader.readAsText(file);
+  };
+
+  m.querySelector('#imp_submit').onclick = async () => {
+    const btn = m.querySelector('#imp_submit');
+    btn.disabled = true;
+    btn.textContent = 'Importando…';
+    try {
+      const targetTipo = (impType === 'muestras') ? 'muestra' : 'producto';
+      const res = await api('/api/catalogs/bulk', {
+        method: 'POST',
+        body: { tipo: targetTipo, items: parsedItems }
+      });
+      close();
+      toast(`✅ Importación completada: ${res.added} nuevos elementos agregados (${res.total - res.added} actualizados o existentes)`);
+      vConfig('producto', impType);
+    } catch (err) {
+      toast(err.message, 1);
+      btn.disabled = false;
+      btn.textContent = `Confirmar e Importar (${parsedItems.length})`;
+    }
+  };
+}
 }
 
 // ---------- Multimedia & Docs (Documentación y Recursos) ----------

@@ -1,5 +1,5 @@
 // Service Worker para Visitas ERP - GammaFood
-const CACHE_NAME = 'visitas-erp-v7';
+const CACHE_NAME = 'visitas-erp-v8';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
