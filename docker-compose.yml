@@ -31,6 +31,9 @@ services:
       MASTER_EMAIL: ${INITIAL_MASTER_EMAIL:-${MASTER_EMAIL:-}}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       APP_TZ: ${APP_TZ:-America/Caracas}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     ports:
       - "${APP_PORT:-3000}:3000"
       - "3443:3443"

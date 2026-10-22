@@ -59,6 +59,35 @@ canvas.sig{width:100%;max-width:420px;height:150px;border:1px dashed var(--mut);
 .fld-protected{background:var(--bg)!important;opacity:0.8!important;cursor:not-allowed!important;border-style:dashed!important}
 .btn-edit-fld{display:none;align-items:center;gap:3px;background:none;border:none;cursor:pointer;color:var(--ac);font-size:12px;font-weight:600;padding:2px 6px;border-radius:4px}
 .btn-edit-fld:hover{background:rgba(15,157,138,.12)}
+/* === Agendar / Calendario Autónomo === */
+.cal-wrap{user-select:none}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap}
+.cal-header h2{margin:0;font-size:17px;font-weight:700}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-day-name{text-align:center;font-size:11px;font-weight:700;color:var(--mut);padding:6px 0;text-transform:uppercase;letter-spacing:.5px}
+.cal-cell{min-height:85px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:5px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column}
+.cal-cell:hover{background:rgba(15,157,138,.06);border-color:var(--ac)}
+.cal-cell.today{border-color:var(--ac);box-shadow:0 0 0 2px rgba(15,157,138,.25)}
+.cal-cell.other-month{opacity:.35;background:rgba(0,0,0,.02)}
+.cal-cell .cal-num{font-size:12px;font-weight:700;color:var(--mut);margin-bottom:3px}
+.cal-cell.today .cal-num{color:var(--ac);font-weight:800}
+.cal-ev{font-size:11px;font-weight:600;color:#fff;border-radius:4px;padding:2px 6px;margin-bottom:3px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;box-shadow:0 1px 2px rgba(0,0,0,.15);transition:transform .1s}
+.cal-ev:hover{transform:scale(1.02);filter:brightness(1.1)}
+.cal-ev.other-user{opacity:.85;border-left:3px solid #ffaa00}
+.cal-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.cal-kpi-card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column}
+.cal-kpi-card .val{font-size:22px;font-weight:800;color:var(--tx)}
+.cal-kpi-card .lbl{font-size:11px;color:var(--mut);text-transform:uppercase;font-weight:600;margin-top:2px}
+.cal-kpi-card.highlight{border-color:var(--ac);background:rgba(15,157,138,.07)}
+.cal-kpi-card.highlight .val{color:var(--ac)}
+.cal-tabs{display:inline-flex;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:2px}
+.cal-tab{padding:6px 14px;border:none;background:none;border-radius:6px;font-size:13px;font-weight:600;color:var(--mut);cursor:pointer;transition:all .15s}
+.cal-tab.active{background:var(--ac);color:var(--acx)}
+.push-status-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer;transition:all .2s}
+.push-status-btn.active{border-color:#10b981;color:#10b981;background:rgba(16,185,129,.08)}
+.cal-agenda-row{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:12px;transition:all .15s}
+.cal-agenda-row:hover{border-color:var(--ac);background:rgba(15,157,138,.04)}
+.cal-pill{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;color:#fff}
 </style>
 </head>
 <body>
@@ -382,7 +411,14 @@ const themeSeg = () => `<div class="seg" style="border-color:var(--bd);color:var
 const bindTheme = () => { document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { localStorage.setItem('theme', b.dataset.t); applyTheme(); }); applyTheme(); };
 
 function shell() {
-  const nav = [['dash','Panel'],['nueva','Nueva visita'],['visitas', me.admin ? 'Todas las visitas' : 'Mis visitas'],['literatura','Literatura']];
+  const nav = [
+    ['dash','Panel'],
+    ['nueva','Nueva visita'],
+    ['visitas', me.admin ? 'Todas las visitas' : 'Mis visitas'],
+    ['agendar','Agendar'],
+    ['pedidos','Pedidos'],
+    ['literatura','Multimedia & Docs']
+  ];
   if (me.admin) nav.push(['config','Configuración']);
   if (me.can_view_logs) nav.push(['logs','Logs']);
   root.innerHTML = `<div id="app"><aside>
@@ -406,9 +442,9 @@ function go(v) {
   if (v === 'logs' && !me.can_view_logs) v = 'dash';
   view = v; location.hash = v;
   document.querySelectorAll('[data-go]').forEach(a => a.classList.toggle('on', a.dataset.go === v));
-  const modNames = { dash: 'Panel', nueva: 'Nueva Visita', visitas: 'Visitas', literatura: 'Literatura', config: 'Configuración', logs: 'Logs del Sistema' };
+  const modNames = { dash: 'Panel', nueva: 'Nueva Visita', visitas: 'Visitas', agendar: 'Agendar', pedidos: 'Pedidos', literatura: 'Multimedia & Docs', config: 'Configuración', logs: 'Logs del Sistema' };
   api('/api/logs/track', { method: 'POST', body: { modulo: modNames[v] || v, detalle: `Ingresó al módulo ${modNames[v] || v}` } }).catch(() => {});
-  ({ dash: vDash, nueva: vNueva, visitas: vVisitas, literatura: vLiteratura, config: () => vConfig('usuarios'), logs: vLogs }[v] || vDash)().catch(e => toast(e.message, 1));
+  ({ dash: vDash, nueva: vNueva, visitas: vVisitas, agendar: vAgendar, pedidos: vPedidos, literatura: vLiteratura, config: () => vConfig('usuarios'), logs: vLogs }[v] || vDash)().catch(e => toast(e.message, 1));
 }
 
 // ---------- Panel ----------
@@ -417,6 +453,419 @@ async function vDash() {
   const bars = (t, a) => { const m = Math.max(1, ...a.map(x => x.n)); return `<div class="card"><h2>${t}</h2>${a.map(x => `<div class="bar"><em>${esc(x.k)}</em><i style="width:${x.n / m * 60}%"></i>${x.n}</div>`).join('') || '<span style="color:var(--mut)">Sin datos</span>'}</div>`; };
   main.innerHTML = `<h1>Panel</h1><div class="grid">${[['Visitas totales', s.total], ['Este mes', s.mes], ['Hoy', s.hoy]].map(([l, n]) => `<div class="card stat"><b>${n}</b><span>${l}</span></div>`).join('')}</div>
     <div class="grid2">${bars('Por tipo de institución', s.porInstitucion)}${me.admin ? bars('Por visitador', s.porVisitador) : ''}</div>`;
+}
+
+// ---------- Agendar (Sistema Autónomo con Alertas y Notificaciones) ----------
+let calCurrentView = 'month'; // 'month' o 'agenda'
+
+async function vAgendar() {
+  const main = $('#main');
+  const isA = me.admin;
+  let curYear = new Date().getFullYear(), curMonth = new Date().getMonth();
+  let allUsers = [], filterUserId = '';
+
+  if (isA) {
+    try { allUsers = await api('/api/events/users'); } catch {}
+  }
+
+  function fmtDT(dt) {
+    if (!dt) return '—';
+    return new Date(dt).toLocaleString('es-VE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  }
+  function fmtTime(dt) {
+    if (!dt) return '';
+    return new Date(dt).toLocaleTimeString('es-VE', { hour:'2-digit', minute:'2-digit' });
+  }
+  function toLocalInput(dt) {
+    if (!dt) return '';
+    const d = new Date(dt), pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  async function fetchSummary() {
+    try {
+      return await api('/api/events/summary');
+    } catch {
+      return { total: 0, hoy: 0, manana: 0, semana: 0 };
+    }
+  }
+
+  async function fetchEvents() {
+    const from = new Date(curYear, curMonth - 1, 20).toISOString();
+    const to   = new Date(curYear, curMonth + 2, 10, 23, 59, 59).toISOString();
+    const params = new URLSearchParams({ from, to });
+    if (isA && filterUserId) params.set('user_id', filterUserId);
+    const d = await api(`/api/events?${params}`);
+    return d.rows || [];
+  }
+
+  function getCatMeta(cat) {
+    const map = {
+      visita:   { label: 'Visita Médica', color: '#0f9d8a', icon: '🩺' },
+      muestras: { label: 'Entrega de Muestras', color: '#10b981', icon: '📦' },
+      cobranza: { label: 'Cobranza', color: '#f59e0b', icon: '💵' },
+      reunion:  { label: 'Reunión Clínica', color: '#8b5cf6', icon: '👥' },
+      otro:     { label: 'Actividad / Otro', color: '#64748b', icon: '📌' }
+    };
+    return map[cat] || map.visita;
+  }
+
+  function openEventModal(ev = null, defaultDate = null) {
+    const isNew = !ev;
+    const canEdit = isNew || ev.user_id === (me.id || 0) || isA;
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+
+    let defStart, defEnd;
+    const pad = n => String(n).padStart(2,'0');
+    if (defaultDate) {
+      defStart = `${defaultDate.getFullYear()}-${pad(defaultDate.getMonth()+1)}-${pad(defaultDate.getDate())}T09:00`;
+      defEnd   = `${defaultDate.getFullYear()}-${pad(defaultDate.getMonth()+1)}-${pad(defaultDate.getDate())}T10:00`;
+    } else {
+      const now = new Date();
+      defStart = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours()+1)}:00`;
+      defEnd   = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours()+2)}:00`;
+    }
+
+    const curCat = ev?.categoria || 'visita';
+    const curColor = ev?.color || getCatMeta(curCat).color;
+    const curRem = ev?.recordatorio_min !== undefined ? ev.recordatorio_min : 1440;
+
+    modal.innerHTML = `<div class="card" style="max-width:540px;width:100%">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h2 style="margin:0">${isNew ? '➕ Agendar Nueva Actividad' : (canEdit ? '✏️ Editar Actividad Agendada' : '📅 Detalle de Actividad')}</h2>
+        <span class="cal-pill" style="background:${curColor}">${getCatMeta(curCat).label}</span>
+      </div>
+      <div class="fields" style="grid-template-columns:1fr">
+        <div class="fld"><label>Título de la actividad *</label><input id="ev_titulo" placeholder="Ej: Visita Dr. Pérez / Presentación Prokal" value="${esc(ev?.titulo||'')}" ${!canEdit?'readonly':''}></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="fld">
+            <label>Tipo / Categoría</label>
+            <select id="ev_cat" ${!canEdit?'disabled':''}>
+              <option value="visita" ${curCat==='visita'?'selected':''}>🩺 Visita Médica</option>
+              <option value="muestras" ${curCat==='muestras'?'selected':''}>📦 Entrega de Muestras</option>
+              <option value="cobranza" ${curCat==='cobranza'?'selected':''}>💵 Cobranza</option>
+              <option value="reunion" ${curCat==='reunion'?'selected':''}>👥 Reunión Clínica</option>
+              <option value="otro" ${curCat==='otro'?'selected':''}>📌 Otro / Actividad Personal</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label>Médico / Contacto</label>
+            <input id="ev_ref" placeholder="Nombre del médico o contacto" value="${esc(ev?.medico_ref||'')}" ${!canEdit?'readonly':''}>
+          </div>
+        </div>
+        <div class="fld"><label>Lugar / Institución</label><input id="ev_ubic" placeholder="Ej: Clínica San José, Consultorio 204" value="${esc(ev?.ubicacion||'')}" ${!canEdit?'readonly':''}></div>
+        <div class="fld" style="margin-bottom:0">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="ev_allday" style="width:auto" ${ev?.todo_el_dia?'checked':''} ${!canEdit?'disabled':''}>
+            <span>Todo el día</span>
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="fld"><label>Fecha y hora de inicio *</label><input type="datetime-local" id="ev_inicio" value="${toLocalInput(ev?.inicio)||defStart}" ${!canEdit?'readonly':''}></div>
+          <div class="fld"><label>Fecha y hora de fin *</label><input type="datetime-local" id="ev_fin" value="${toLocalInput(ev?.fin)||defEnd}" ${!canEdit?'readonly':''}></div>
+        </div>
+        <div class="fld" style="background:rgba(15,157,138,.06);padding:10px;border-radius:8px;border:1px solid rgba(15,157,138,.2)">
+          <label style="font-weight:700;color:var(--tx);display:flex;align-items:center;gap:6px">
+            🔔 Recordatorio / Alerta de anticipación
+          </label>
+          <select id="ev_rem" style="margin-top:6px" ${!canEdit?'disabled':''}>
+            <option value="1440" ${curRem===1440?'selected':''}>📅 1 día antes ("Recuerde que mañana tiene actividades agendadas...")</option>
+            <option value="2880" ${curRem===2880?'selected':''}>📅 2 días antes</option>
+            <option value="120" ${curRem===120?'selected':''}>⏰ 2 horas antes</option>
+            <option value="60" ${curRem===60?'selected':''}>⏰ 1 hora antes</option>
+            <option value="30" ${curRem===30?'selected':''}>⏰ 30 minutos antes</option>
+            <option value="15" ${curRem===15?'selected':''}>⏰ 15 minutos antes</option>
+            <option value="0" ${curRem===0?'selected':''}>🔔 En el momento exacto</option>
+            <option value="-1" ${curRem===-1?'selected':''}>🔕 Sin recordatorio</option>
+          </select>
+          <div style="font-size:11px;color:var(--mut);margin-top:4px">
+            El sistema emitirá alerta en pantalla y notificación push en su dispositivo cuando llegue el tiempo configurado.
+          </div>
+        </div>
+        <div class="fld"><label>Descripción / Observaciones</label><textarea id="ev_desc" rows="2" placeholder="Detalles de la visita, temas a tratar, muestras a llevar..." ${!canEdit?'readonly':''}>${esc(ev?.descripcion||'')}</textarea></div>
+        ${isA && ev ? `<div class="fld"><label>Registrado por</label><input readonly value="${esc(ev.user_nombre||ev.user_email)}"></div>` : ''}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn sec" id="ev_close">Cerrar</button>
+        ${!isNew && canEdit ? `<button class="btn dg" id="ev_del">Eliminar</button>` : ''}
+        ${canEdit ? `<button class="btn" id="ev_save">${isNew ? 'Agendar Actividad' : 'Guardar Cambios'}</button>` : ''}
+      </div>
+    </div>`;
+
+    document.body.appendChild(modal);
+    const closeModal = () => modal.remove();
+    $('#ev_close').onclick = closeModal;
+    modal.onclick = e => { if (e.target === modal) closeModal(); };
+
+    if (canEdit) {
+      $('#ev_allday').onchange = () => {
+        const ad = $('#ev_allday').checked;
+        ['#ev_inicio','#ev_fin'].forEach(id => { const el = $(id); el.type = ad ? 'date' : 'datetime-local'; });
+      };
+      if ($('#ev_save')) $('#ev_save').onclick = async () => {
+        const titulo = $('#ev_titulo').value.trim();
+        const inicio = $('#ev_inicio').value;
+        const fin    = $('#ev_fin').value;
+        if (!titulo || !inicio || !fin) return toast('Título, inicio y fin son obligatorios', 1);
+
+        const cat = $('#ev_cat').value;
+        const color = getCatMeta(cat).color;
+        const body = {
+          titulo,
+          descripcion: $('#ev_desc').value.trim(),
+          ubicacion: $('#ev_ubic').value.trim(),
+          medico_ref: $('#ev_ref').value.trim(),
+          categoria: cat,
+          color: color,
+          recordatorio_min: parseInt($('#ev_rem').value),
+          inicio: new Date(inicio).toISOString(),
+          fin: new Date(fin).toISOString(),
+          todo_el_dia: $('#ev_allday').checked
+        };
+
+        try {
+          if (isNew) {
+            await api('/api/events', { method: 'POST', body });
+            toast('✅ Actividad agendada con éxito');
+          } else {
+            await api(`/api/events/${ev.id}`, { method: 'PUT', body });
+            toast('✅ Actividad actualizada');
+          }
+          closeModal();
+          render();
+          checkActivityAlerts();
+        } catch(e) { toast(e.message, 1); }
+      };
+
+      if ($('#ev_del')) $('#ev_del').onclick = async () => {
+        if (!confirm('¿Desea eliminar esta actividad agendada?')) return;
+        try {
+          await api(`/api/events/${ev.id}`, { method: 'DELETE' });
+          toast('Actividad eliminada');
+          closeModal();
+          render();
+        } catch(e) { toast(e.message, 1); }
+      };
+    }
+  }
+
+  async function render() {
+    const [events, sum] = await Promise.all([fetchEvents(), fetchSummary()]);
+    const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const DAYS   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const firstDay = new Date(curYear, curMonth, 1).getDay();
+    const daysInMonth = new Date(curYear, curMonth+1, 0).getDate();
+    const prevDays = new Date(curYear, curMonth, 0).getDate();
+    const today = new Date();
+    const todayStr = today.toDateString();
+
+    const evByDay = {};
+    events.forEach(ev => {
+      const d = new Date(ev.inicio);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (!evByDay[key]) evByDay[key] = [];
+      evByDay[key].push(ev);
+    });
+
+    // Celdas del calendario
+    let cells = '';
+    for (let i = 0; i < firstDay; i++) {
+      const day = prevDays - firstDay + i + 1;
+      cells += `<div class="cal-cell other-month"><div class="cal-num">${day}</div></div>`;
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const isToday = new Date(curYear, curMonth, d).toDateString() === todayStr;
+      const key = `${curYear}-${curMonth}-${d}`;
+      const dayEvs = evByDay[key] || [];
+      const evHtml = dayEvs.slice(0,3).map(ev => {
+        const isMine = ev.user_id === (me.id || 0);
+        const col = ev.color || '#0f9d8a';
+        return `<div class="cal-ev${!isMine?' other-user':''}" style="background:${col}" data-evid="${ev.id}" title="${esc(ev.titulo)}${ev.user_nombre?' ('+esc(ev.user_nombre)+')':''}">${esc(ev.titulo)}</div>`;
+      }).join('') + (dayEvs.length > 3 ? `<div style="font-size:10px;font-weight:700;color:var(--ac)">+${dayEvs.length-3} más</div>` : '');
+      cells += `<div class="cal-cell${isToday?' today':''}" data-day="${d}">
+        <div class="cal-num">${d}</div>${evHtml}</div>`;
+    }
+    const total = firstDay + daysInMonth;
+    const rem = (7 - (total % 7)) % 7;
+    for (let i = 1; i <= rem; i++) cells += `<div class="cal-cell other-month"><div class="cal-num">${i}</div></div>`;
+
+    // Vista Agenda (Lista)
+    let agendaHtml = '';
+    if (events.length === 0) {
+      agendaHtml = '<div class="card" style="text-align:center;padding:30px;color:var(--mut)">No hay actividades agendadas en este período. Presione "+ Agendar Actividad" para programar una.</div>';
+    } else {
+      agendaHtml = events.map(ev => {
+        const col = ev.color || '#0f9d8a';
+        const cat = getCatMeta(ev.categoria);
+        const isMine = ev.user_id === (me.id || 0);
+        return `
+          <div class="cal-agenda-row" data-evid="${ev.id}" style="border-left:5px solid ${col};cursor:pointer">
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span class="cal-pill" style="background:${col}">${cat.icon} ${cat.label}</span>
+                <span style="font-size:12px;font-weight:700;color:var(--tx)">${fmtDT(ev.inicio)}</span>
+                ${ev.recordatorio_min >= 0 ? `<span style="font-size:11px;color:var(--mut);display:inline-flex;align-items:center;gap:3px">🔔 Alerta activa</span>` : ''}
+              </div>
+              <div style="font-size:15px;font-weight:700;color:var(--tx)">${esc(ev.titulo)}</div>
+              <div style="font-size:13px;color:var(--mut);margin-top:2px;display:flex;gap:12px;flex-wrap:wrap">
+                ${ev.medico_ref ? `<span>👨‍⚕️ ${esc(ev.medico_ref)}</span>` : ''}
+                ${ev.ubicacion ? `<span>📍 ${esc(ev.ubicacion)}</span>` : ''}
+                ${isA && !isMine ? `<span style="color:var(--ac)">👤 ${esc(ev.user_nombre||ev.user_email)}</span>` : ''}
+              </div>
+            </div>
+            <button class="btn sec sm" style="padding:5px 12px">Ver detalle</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Estado Push
+    const pStatus = await getPushStatus();
+    let pushBtnLabel = '🔔 Activar Alertas en este equipo';
+    let pushBtnClass = 'push-status-btn';
+    if (pStatus === 'subscribed') {
+      pushBtnLabel = '✅ Alertas Push Activadas';
+      pushBtnClass = 'push-status-btn active';
+    } else if (pStatus === 'denied') {
+      pushBtnLabel = '🔕 Notificaciones bloqueadas';
+    }
+
+    main.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div>
+          <h1 style="margin:0;display:inline-flex;align-items:center;gap:8px">📅 Agendar</h1>
+          <p style="margin:2px 0 0;font-size:13px;color:var(--mut)">Sistema de agenda propia con recordatorios y alertas automáticas</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          ${isA ? `<select id="cal_user_filter" style="width:auto;padding:7px 10px;font-size:13px">
+            <option value="">Todos los usuarios</option>
+            ${allUsers.map(u => `<option value="${u.id}" ${filterUserId==u.id?'selected':''}>${esc(u.nombre||u.email)}</option>`).join('')}
+          </select>` : ''}
+          <button class="${pushBtnClass}" id="btn_toggle_push" title="Recibir recordatorios aunque la aplicación esté en segundo plano">${pushBtnLabel}</button>
+          <button class="btn" id="cal_new_ev">+ Agendar Actividad</button>
+        </div>
+      </div>
+
+      <!-- Barra de métricas de agenda -->
+      <div class="cal-kpis">
+        <div class="cal-kpi-card">
+          <span class="val">${sum.total}</span>
+          <span class="lbl">Total Registradas</span>
+        </div>
+        <div class="cal-kpi-card ${sum.hoy > 0 ? 'highlight' : ''}">
+          <span class="val">${sum.hoy}</span>
+          <span class="lbl">Para Hoy</span>
+        </div>
+        <div class="cal-kpi-card ${sum.manana > 0 ? 'highlight' : ''}">
+          <span class="val">${sum.manana}</span>
+          <span class="lbl">Para Mañana</span>
+        </div>
+        <div class="cal-kpi-card">
+          <span class="val">${sum.semana}</span>
+          <span class="lbl">Próximos 7 Días</span>
+        </div>
+      </div>
+
+      <!-- Pestañas de vista y controles de navegación -->
+      <div class="card" style="padding:12px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div class="cal-tabs">
+            <button class="cal-tab ${calCurrentView==='month'?'active':''}" id="tab_view_month">📅 Calendario</button>
+            <button class="cal-tab ${calCurrentView==='agenda'?'active':''}" id="tab_view_agenda">📋 Lista de Actividades</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn sec sm" id="cal_prev">&lsaquo; Anterior</button>
+            <button class="btn sec sm" id="cal_today">Hoy</button>
+            <h2 style="margin:0;font-size:16px;min-width:140px;text-align:center">${MONTHS[curMonth]} ${curYear}</h2>
+            <button class="btn sec sm" id="cal_next">Siguiente &rsaquo;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contenido según la vista seleccionada -->
+      ${calCurrentView === 'month' ? `
+        <div class="cal-wrap card" style="padding:14px">
+          <div class="cal-grid">${DAYS.map(d=>`<div class="cal-day-name">${d}</div>`).join('')}${cells}</div>
+        </div>
+      ` : `
+        <div class="cal-agenda-wrap">
+          ${agendaHtml}
+        </div>
+      `}
+    `;
+
+    // Event handlers
+    $('#tab_view_month').onclick = () => { calCurrentView = 'month'; render(); };
+    $('#tab_view_agenda').onclick = () => { calCurrentView = 'agenda'; render(); };
+
+    $('#cal_prev').onclick  = () => { curMonth--; if (curMonth < 0) { curMonth=11; curYear--; } render(); };
+    $('#cal_next').onclick  = () => { curMonth++; if (curMonth > 11) { curMonth=0; curYear++; } render(); };
+    $('#cal_today').onclick = () => { curYear = today.getFullYear(); curMonth = today.getMonth(); render(); };
+
+    $('#cal_new_ev').onclick = () => openEventModal();
+
+    if (isA && $('#cal_user_filter')) {
+      $('#cal_user_filter').onchange = e => { filterUserId = e.target.value; render(); };
+    }
+
+    // Push toggle
+    $('#btn_toggle_push').onclick = async () => {
+      const cur = await getPushStatus();
+      if (cur === 'subscribed') {
+        if (confirm('¿Desea desactivar las notificaciones push en este dispositivo?')) {
+          await unsubscribePush();
+          render();
+        }
+      } else {
+        const ok = await subscribePush();
+        if (ok) render();
+      }
+    };
+
+    // Clic en celdas para agendar en ese día
+    document.querySelectorAll('.cal-cell[data-day]').forEach(cell => {
+      cell.onclick = e => {
+        if (e.target.closest('.cal-ev')) return;
+        const d = parseInt(cell.dataset.day);
+        openEventModal(null, new Date(curYear, curMonth, d));
+      };
+    });
+
+    // Clic en evento para ver/editar
+    document.querySelectorAll('[data-evid]').forEach(el => {
+      el.onclick = e => {
+        e.stopPropagation();
+        const ev = events.find(v => v.id == el.dataset.evid);
+        if (ev) openEventModal(ev);
+      };
+    });
+  }
+
+  render();
+}
+
+// ---------- Pedidos (Módulo en preparación) ----------
+async function vPedidos() {
+  const main = $('#main');
+  main.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+      <div>
+        <h1 style="margin:0;display:inline-flex;align-items:center;gap:8px">📦 Pedidos</h1>
+        <p style="margin:2px 0 0;font-size:13px;color:var(--mut)">Módulo de gestión y seguimiento de pedidos</p>
+      </div>
+    </div>
+    <div class="card" style="text-align:center;padding:50px 20px;border-top:4px solid var(--ac)">
+      <div style="font-size:48px;margin-bottom:14px">📦</div>
+      <h2 style="margin:0 0 8px;font-size:20px">Módulo de Pedidos</h2>
+      <p style="color:var(--mut);max-width:500px;margin:0 auto 20px;line-height:1.5">
+        Este espacio está preparado para la configuración y flujo operativo de pedidos de visitadores y administración.
+      </p>
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;background:rgba(15,157,138,.1);border:1px solid rgba(15,157,138,.25);color:var(--ac);font-weight:600;font-size:13px">
+        <span>⚙️ En preparación</span>
+      </div>
+    </div>
+  `;
 }
 
 // ---------- Nueva visita ----------
@@ -1120,20 +1569,150 @@ async function vConfig(tab) {
     });
   } else {
     cat = await api('/api/catalogs');
-    main.innerHTML = tabs + `<div class="card"><div class="row2"><input id="cn" style="max-width:320px" placeholder="Nuevo elemento"><button class="btn" id="ca">Agregar</button></div></div>
-      <div class="card">${cat[tab].map(o => `<span class="chip">${esc(o.nombre)}<button data-del="${o.id}" title="Quitar">×</button></span>`).join('')}</div>`;
-    $('#ca').onclick = async () => { try { await api('/api/catalogs', { method: 'POST', body: { tipo: tab, nombre: $('#cn').value } }); vConfig(tab); } catch (e) { toast(e.message, 1); } };
-    main.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { await api('/api/catalogs/' + b.dataset.del, { method: 'DELETE' }); vConfig(tab); });
+    const isProd = tab === 'producto';
+    main.innerHTML = tabs + `
+      <div class="card">
+        <div class="row2" style="flex-wrap:wrap;gap:10px">
+          <input id="cn" style="max-width:320px" placeholder="${isProd ? 'Nombre del nuevo producto / muestra' : 'Nuevo elemento'}">
+          <button class="btn" id="ca">Agregar</button>
+          ${isProd ? `
+            <input type="file" id="csv_import_file" accept=".csv,text/csv,text/plain" style="display:none">
+            <button type="button" class="btn sec" id="btn_import_csv" style="display:inline-flex;align-items:center;gap:6px" title="Importar lista de productos desde archivo CSV o texto plano">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Importar CSV
+            </button>
+          ` : ''}
+        </div>
+        ${isProd ? `
+          <div style="font-size:12px;color:var(--mut);margin-top:8px">
+            💡 Puedes importar un archivo CSV o TXT con la lista de productos (un producto por fila).
+          </div>
+        ` : ''}
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span style="font-size:13px;color:var(--mut);font-weight:600">${cat[tab].length} elementos registrados</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${cat[tab].map(o => `<span class="chip">${esc(o.nombre)}<button data-del="${o.id}" title="Quitar">×</button></span>`).join('') || '<span style="color:var(--mut)">Sin elementos registrados</span>'}
+        </div>
+      </div>
+    `;
+
+    $('#ca').onclick = async () => {
+      const val = $('#cn').value.trim();
+      if (!val) return toast('Debe ingresar un nombre', 1);
+      try {
+        await api('/api/catalogs', { method: 'POST', body: { tipo: tab, nombre: val } });
+        vConfig(tab);
+      } catch (e) { toast(e.message, 1); }
+    };
+
+    if (isProd) {
+      const fileInput = $('#csv_import_file');
+      $('#btn_import_csv').onclick = () => fileInput.click();
+      fileInput.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async evt => {
+          const text = evt.target.result;
+          const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          const items = [];
+          for (let line of lines) {
+            let val = line;
+            if (val.startsWith('"')) {
+              const m = val.match(/^"([^"]+)"/);
+              if (m) val = m[1];
+              else val = val.replace(/^"|"$/g, '');
+            } else if (val.includes(',')) {
+              val = val.split(',')[0].trim();
+            } else if (val.includes(';')) {
+              val = val.split(';')[0].trim();
+            }
+            val = val.replace(/^["']|["']$/g, '').trim();
+            if (items.length === 0 && ['producto','productos','nombre','item','items','name','product','muestras','descripcion'].includes(val.toLowerCase())) {
+              continue;
+            }
+            if (val && !items.includes(val)) {
+              items.push(val);
+            }
+          }
+          if (!items.length) {
+            fileInput.value = '';
+            return toast('No se encontraron filas con productos válidos en el archivo', 1);
+          }
+          openImportPreviewModal(items);
+          fileInput.value = '';
+        };
+        reader.readAsText(file);
+      };
+
+      function openImportPreviewModal(items) {
+        const m = document.createElement('div');
+        m.className = 'modal';
+        m.innerHTML = `
+          <div class="card" style="max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <h2 style="margin:0;font-size:18px;display:inline-flex;align-items:center;gap:8px">
+                📥 Importar Productos desde CSV
+              </h2>
+              <button type="button" class="btn sec sm" id="imp_close" style="padding:2px 8px">✕</button>
+            </div>
+            <p style="margin:0 0 10px;font-size:13px;color:var(--mut)">
+              Se detectaron <strong>${items.length}</strong> productos listados por fila. Revisa la lista antes de agregarlos al catálogo:
+            </p>
+            <div style="flex:1;overflow-y:auto;max-height:300px;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin-bottom:16px">
+              <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.8">
+                ${items.map(it => `<li><strong>${esc(it)}</strong></li>`).join('')}
+              </ol>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="btn sec" id="imp_cancel">Cancelar</button>
+              <button class="btn" id="imp_confirm">Confirmar e Importar (${items.length})</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(m);
+        const close = () => m.remove();
+        m.querySelector('#imp_close').onclick = close;
+        m.querySelector('#imp_cancel').onclick = close;
+        m.onclick = e => { if (e.target === m) close(); };
+
+        m.querySelector('#imp_confirm').onclick = async () => {
+          try {
+            m.querySelector('#imp_confirm').disabled = true;
+            m.querySelector('#imp_confirm').textContent = 'Importando…';
+            const res = await api('/api/catalogs/bulk', {
+              method: 'POST',
+              body: { tipo: 'producto', items }
+            });
+            close();
+            toast(`✅ Importación completada: ${res.added} nuevos productos agregados (${res.total - res.added} ya existían)`);
+            vConfig('producto');
+          } catch (err) {
+            toast(err.message, 1);
+            m.querySelector('#imp_confirm').disabled = false;
+            m.querySelector('#imp_confirm').textContent = `Confirmar e Importar (${items.length})`;
+          }
+        };
+      }
+    }
+
+    main.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      await api('/api/catalogs/' + b.dataset.del, { method: 'DELETE' });
+      vConfig(tab);
+    });
   }
   main.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => vConfig(b.dataset.tab));
 }
 
-// ---------- Literatura / Documentación ----------
+// ---------- Multimedia & Docs (Documentación y Recursos) ----------
 async function vLiteratura() {
   const docs = await api('/api/documentation');
   const main = $('#main');
-  main.innerHTML = `<h1>Literatura Médica y Documentación</h1>
-    <p style="color:var(--mut);margin-bottom:20px">Material científico, fichas técnicas y dípticos oficiales de GammaFood</p>
+  main.innerHTML = `<h1>Multimedia & Docs</h1>
+    <p style="color:var(--mut);margin-bottom:20px">Material científico, fichas técnicas, recursos multimedia y dípticos oficiales de GammaFood</p>
     ${me.admin ? `
       <div class="card" style="margin-bottom:20px">
         <h2>Agregar documento</h2>
@@ -1373,11 +1952,195 @@ async function vLogs() {
   load();
 }
 
+// ---------- Notificaciones Web Push y Alertas de Actividades ----------
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function getPushStatus() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  if (Notification.permission !== 'granted') return 'prompt';
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return sub ? 'subscribed' : 'prompt';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+async function subscribePush() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      toast('Las notificaciones Push no son soportadas en este navegador', 1);
+      return false;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      toast('Permiso de notificaciones denegado', 1);
+      return false;
+    }
+    const { publicKey } = await api('/api/push/vapid-key');
+    if (!publicKey) {
+      toast('Push VAPID no disponible en servidor', 1);
+      return false;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+    }
+    const subJson = sub.toJSON();
+    await api('/api/push/subscribe', {
+      method: 'POST',
+      body: {
+        endpoint: sub.endpoint,
+        keys: {
+          p256dh: subJson.keys?.p256dh,
+          auth: subJson.keys?.auth
+        }
+      }
+    });
+    toast('🔔 Notificaciones de recordatorios activadas correctamente');
+    return true;
+  } catch (err) {
+    console.error('Error al suscribir a push:', err);
+    toast('Error activando notificaciones: ' + err.message, 1);
+    return false;
+  }
+}
+
+async function unsubscribePush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await api('/api/push/subscribe', { method: 'DELETE', body: { endpoint: sub.endpoint } });
+      await sub.unsubscribe();
+    }
+    toast('Notificaciones desactivadas en este equipo');
+    return true;
+  } catch (err) {
+    toast('Error al desactivar: ' + err.message, 1);
+    return false;
+  }
+}
+
+let activeAlertModal = null;
+const snoozedAlertIds = new Set();
+
+function showActivityReminderAlert(ev) {
+  if (!ev || !ev.id || snoozedAlertIds.has(ev.id)) return;
+  if (activeAlertModal) return; // Ya hay una en pantalla
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.zIndex = '9999';
+
+  const diff = Math.round((new Date(ev.inicio) - Date.now()) / 60000);
+  let mainMsg = '';
+  if (ev.recordatorio_min >= 1200) {
+    mainMsg = `Recuerde que mañana tiene actividades agendadas: "${esc(ev.titulo)}".`;
+  } else if (diff <= 0) {
+    mainMsg = `La actividad agendada "${esc(ev.titulo)}" está comenzando en este momento.`;
+  } else if (diff < 60) {
+    mainMsg = `Recordatorio: En ${diff} minutos tiene agendada la actividad "${esc(ev.titulo)}".`;
+  } else {
+    const h = Math.round(diff / 60);
+    mainMsg = `Recordatorio: En ${h} hora(s) tiene agendada la actividad "${esc(ev.titulo)}".`;
+  }
+
+  const dtStr = new Date(ev.inicio).toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+
+  modal.innerHTML = `
+    <div class="card" style="max-width:480px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.25);border-top:5px solid var(--ac)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <span style="font-size:32px">🔔</span>
+        <div>
+          <h2 style="margin:0;font-size:18px">Recordatorio de Actividad</h2>
+          <span style="font-size:12px;color:var(--mut)">Alerta del sistema de agenda</span>
+        </div>
+      </div>
+      <div style="background:rgba(15,157,138,.08);border:1px solid rgba(15,157,138,.2);padding:14px;border-radius:10px;margin-bottom:16px">
+        <p style="font-size:15px;font-weight:700;color:var(--tx);margin:0 0 10px;line-height:1.4">
+          ${mainMsg}
+        </p>
+        <p style="font-size:14px;font-weight:600;color:var(--ac);margin:0 0 8px">
+          ¿Desea ir a actividades agendadas?
+        </p>
+        <div style="font-size:13px;color:var(--mut);line-height:1.5">
+          <div>📅 <strong>Fecha:</strong> ${dtStr}</div>
+          ${ev.medico_ref ? `<div>👨‍⚕️ <strong>Médico:</strong> ${esc(ev.medico_ref)}</div>` : ''}
+          ${ev.ubicacion ? `<div>📍 <strong>Lugar:</strong> ${esc(ev.ubicacion)}</div>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn sec" id="btn_alert_later">Recordar más tarde</button>
+        <button class="btn sec dg" id="btn_alert_dismiss">Descartar</button>
+        <button class="btn" id="btn_alert_go">📅 Ir a actividades agendadas</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  activeAlertModal = modal;
+
+  const closeAlert = () => {
+    if (activeAlertModal) {
+      activeAlertModal.remove();
+      activeAlertModal = null;
+    }
+  };
+
+  $('#btn_alert_later').onclick = () => {
+    snoozedAlertIds.add(ev.id);
+    setTimeout(() => snoozedAlertIds.delete(ev.id), 10 * 60 * 1000); // 10 min
+    closeAlert();
+  };
+
+  $('#btn_alert_dismiss').onclick = async () => {
+    try {
+      await api(`/api/events/alerts/dismiss/${ev.id}`, { method: 'POST' });
+    } catch {}
+    closeAlert();
+  };
+
+  $('#btn_alert_go').onclick = async () => {
+    try {
+      await api(`/api/events/alerts/dismiss/${ev.id}`, { method: 'POST' });
+    } catch {}
+    closeAlert();
+    go('agendar');
+  };
+}
+
+async function checkActivityAlerts() {
+  if (!me) return;
+  try {
+    const res = await api('/api/events/alerts');
+    if (res.alerts && res.alerts.length > 0) {
+      showActivityReminderAlert(res.alerts[0]);
+    }
+  } catch {}
+}
+
 // ---------- Registro de Service Worker y Eventos de Conectividad ----------
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
       console.log('Service Worker registrado:', reg.scope);
+      checkActivityAlerts();
     }).catch(err => {
       console.warn('Error registrando Service Worker:', err);
     });
@@ -1387,6 +2150,9 @@ if ('serviceWorker' in navigator) {
     if (e.data && e.data.type === 'TRIGGER_SYNC') {
       checkPendingAndSync();
     }
+    if (e.data && e.data.type === 'PUSH_REMINDER') {
+      checkActivityAlerts();
+    }
   });
 }
 
@@ -1394,6 +2160,7 @@ window.addEventListener('online', () => {
   updateNetStatus();
   toast('🟢 Cobertura restablecida. Sincronizando datos...');
   checkPendingAndSync();
+  checkActivityAlerts();
 });
 
 window.addEventListener('offline', () => {
@@ -1402,6 +2169,7 @@ window.addEventListener('offline', () => {
 });
 
 setInterval(checkPendingAndSync, 20000);
+setInterval(checkActivityAlerts, 45000); // Revisar alertas de agenda cada 45 segundos
 
 boot();
 </script>

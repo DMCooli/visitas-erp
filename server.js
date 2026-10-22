@@ -4,7 +4,8 @@ const fs = require('fs'), path = require('path'), crypto = require('crypto'), ht
 pg.types.setTypeParser(1082, v => v); // DATE como texto YYYY-MM-DD
 const {
   DATABASE_URL, JWT_SECRET,
-  FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, FIREBASE_APP_ID
+  FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, FIREBASE_APP_ID,
+  VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
 } = process.env;
 const INITIAL_MASTER_EMAIL = (process.env.INITIAL_MASTER_EMAIL || process.env.MASTER_EMAIL || '').trim().toLowerCase();
 const TZ = /^[\w\/+-]+$/.test(process.env.APP_TZ || '') ? process.env.APP_TZ : 'America/Caracas';
@@ -91,6 +92,43 @@ async function initDb() {
   }
   await q(`CREATE TABLE IF NOT EXISTS geography(id SERIAL PRIMARY KEY, estado TEXT NOT NULL, ciudad TEXT NOT NULL, UNIQUE(estado, ciudad))`);
   await q(`CREATE TABLE IF NOT EXISTS documentation(id SERIAL PRIMARY KEY, titulo TEXT NOT NULL, url TEXT NOT NULL, fecha DATE, descripcion TEXT)`);
+
+  // Módulo Agendar
+  await q(`CREATE TABLE IF NOT EXISTS events(
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    titulo TEXT NOT NULL,
+    descripcion TEXT,
+    ubicacion TEXT,
+    inicio TIMESTAMPTZ NOT NULL,
+    fin TIMESTAMPTZ NOT NULL,
+    todo_el_dia BOOLEAN NOT NULL DEFAULT false,
+    medico_ref TEXT,
+    recordatorio_min INT NOT NULL DEFAULT 60,
+    notif_enviada BOOLEAN NOT NULL DEFAULT false,
+    categoria TEXT DEFAULT 'visita',
+    color TEXT DEFAULT '#0f9d8a',
+    alert_dismissed BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+  )`);
+  await q('CREATE INDEX IF NOT EXISTS events_user ON events(user_id)');
+  await q('CREATE INDEX IF NOT EXISTS events_inicio ON events(inicio)');
+  await q('ALTER TABLE events ADD COLUMN IF NOT EXISTS recordatorio_min INT NOT NULL DEFAULT 60');
+  await q('ALTER TABLE events ADD COLUMN IF NOT EXISTS notif_enviada BOOLEAN NOT NULL DEFAULT false');
+  await q("ALTER TABLE events ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'visita'");
+  await q("ALTER TABLE events ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#0f9d8a'");
+  await q('ALTER TABLE events ADD COLUMN IF NOT EXISTS alert_dismissed BOOLEAN NOT NULL DEFAULT false');
+  // Web Push subscriptions
+  await q(`CREATE TABLE IF NOT EXISTS push_subscriptions(
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(user_id, endpoint)
+  )`);
 
   if (!(await q('SELECT 1 FROM geography LIMIT 1')).rowCount) {
     try {
@@ -270,6 +308,21 @@ app.post('/api/catalogs', auth, admin, wrap(async (req, res) => {
   await q('INSERT INTO catalogs(tipo,nombre) VALUES($1,$2) ON CONFLICT DO NOTHING', [tipo, n]);
   await logActivity(req, 'CREAR_CATALOGO', 'Configuración / Catálogos', `Agregó ${tipo}: "${n}"`);
   res.json({ ok: true });
+}));
+app.post('/api/catalogs/bulk', auth, admin, wrap(async (req, res) => {
+  const { tipo, items } = req.body || {};
+  if (!['institucion', 'especialidad', 'producto'].includes(tipo) || !Array.isArray(items)) {
+    return res.status(400).json({ error: 'Datos inválidos' });
+  }
+  let added = 0;
+  for (const raw of items) {
+    const n = String(raw || '').trim();
+    if (!n) continue;
+    const r = await q('INSERT INTO catalogs(tipo,nombre) VALUES($1,$2) ON CONFLICT DO NOTHING', [tipo, n]);
+    if (r.rowCount > 0) added++;
+  }
+  await logActivity(req, 'IMPORTAR_CATALOGO', 'Configuración / Catálogos', `Importó ${added} elemento(s) en catálogo ${tipo}`);
+  res.json({ ok: true, added, total: items.length });
 }));
 app.delete('/api/catalogs/:id', auth, admin, wrap(async (req, res) => {
   const id = +req.params.id;
@@ -477,10 +530,230 @@ app.get('/api/stats', auth, wrap(async (req, res) => {
     porVisitador: isAdm(req.user) ? await by('COALESCE(u.nombre,u.email)') : [] });
 }));
 
+// ========== MÓDULO AGENDAR (sin dependencias externas) ==========
+
+// Inicializar web-push VAPID
+let webpush = null;
+try {
+  webpush = require('web-push');
+  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    webpush.setVapidDetails(
+      VAPID_SUBJECT || 'mailto:admin@visitas-erp.local',
+      VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
+    );
+    console.log('Web Push VAPID configurado correctamente.');
+  } else {
+    console.warn('Aviso: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY no configuradas. Push desactivado.');
+    webpush = null;
+  }
+} catch (e) { console.warn('web-push no disponible:', e.message); }
+
+// Enviar push a todos los dispositivos de un usuario
+async function sendPushToUser(userId, payload) {
+  if (!webpush) return;
+  const subs = (await q('SELECT * FROM push_subscriptions WHERE user_id=$1', [userId])).rows;
+  for (const s of subs) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+        JSON.stringify(payload)
+      );
+    } catch (err) {
+      // Suscripción expirada o inválida → limpiar
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await q('DELETE FROM push_subscriptions WHERE id=$1', [s.id]);
+      }
+    }
+  }
+}
+
+// Job de recordatorios avanzados
+function startReminderJob() {
+  const CHECK_INTERVAL = 60 * 1000; // Corre cada 1 minuto
+  async function checkReminders() {
+    try {
+      // Buscar eventos con recordatorio activo que deben notificarse ahora
+      const rows = (await q(`
+        SELECT e.*, u.nombre AS user_nombre
+        FROM events e
+        JOIN users u ON u.id = e.user_id
+        WHERE e.notif_enviada = false
+          AND e.recordatorio_min >= 0
+          AND e.inicio >= (now() - interval '2 hours')
+          AND (e.inicio - (e.recordatorio_min * interval '1 minute')) <= now()
+      `)).rows;
+
+      for (const ev of rows) {
+        const diff = Math.round((new Date(ev.inicio) - Date.now()) / 60000);
+        let msg = '';
+        if (ev.recordatorio_min >= 1200) {
+          msg = `Recuerde que mañana tiene actividades agendadas: "${ev.titulo}". ¿Desea ir a actividades agendadas?`;
+        } else if (diff <= 0) {
+          msg = `⏰ La actividad "${ev.titulo}" está comenzando ahora.`;
+        } else if (diff < 60) {
+          msg = `⏰ Recordatorio: En ${diff} minutos tiene agendado "${ev.titulo}".`;
+        } else {
+          const h = Math.round(diff / 60);
+          msg = `⏰ Recordatorio: En ${h} hora(s) tiene agendado "${ev.titulo}".`;
+        }
+
+        await sendPushToUser(ev.user_id, {
+          title: 'Visitas ERP — Recordatorio',
+          body: msg,
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
+          data: { url: '/#agendar', eventId: ev.id }
+        });
+        await q('UPDATE events SET notif_enviada=true WHERE id=$1', [ev.id]);
+      }
+      if (rows.length) console.log(`[Recordatorios] ${rows.length} notificaciones enviadas.`);
+    } catch (e) { console.error('Error en job de recordatorios:', e.message); }
+  }
+  setTimeout(checkReminders, 10000);
+  setInterval(checkReminders, CHECK_INTERVAL);
+  console.log('Job de recordatorios automáticos iniciado (cada 1 min).');
+}
+
+// GET /api/push/vapid-key — clave pública VAPID para el frontend
+app.get('/api/push/vapid-key', auth, (req, res) => {
+  if (!VAPID_PUBLIC_KEY) return res.status(503).json({ error: 'Push no configurado' });
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// POST /api/push/subscribe — guardar suscripción push del dispositivo
+app.post('/api/push/subscribe', auth, wrap(async (req, res) => {
+  const { endpoint, keys } = req.body || {};
+  if (!endpoint || !keys?.p256dh || !keys?.auth) return res.status(400).json({ error: 'Suscripción incompleta' });
+  await q(
+    `INSERT INTO push_subscriptions(user_id, endpoint, p256dh, auth)
+     VALUES($1,$2,$3,$4) ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh=$3, auth=$4`,
+    [req.user.id, endpoint, keys.p256dh, keys.auth]
+  );
+  res.json({ ok: true });
+}));
+
+// DELETE /api/push/subscribe — eliminar suscripción
+app.delete('/api/push/subscribe', auth, wrap(async (req, res) => {
+  const { endpoint } = req.body || {};
+  if (endpoint) await q('DELETE FROM push_subscriptions WHERE user_id=$1 AND endpoint=$2', [req.user.id, endpoint]);
+  else          await q('DELETE FROM push_subscriptions WHERE user_id=$1', [req.user.id]);
+  res.json({ ok: true });
+}));
+
+// GET /api/events/alerts — alertas pendientes en pantalla para el usuario actual
+app.get('/api/events/alerts', auth, wrap(async (req, res) => {
+  const rows = (await q(`
+    SELECT e.*
+    FROM events e
+    WHERE e.user_id = $1
+      AND e.alert_dismissed = false
+      AND e.recordatorio_min >= 0
+      AND e.inicio >= (now() - interval '2 hours')
+      AND (e.inicio - (e.recordatorio_min * interval '1 minute')) <= now()
+    ORDER BY e.inicio ASC
+    LIMIT 3
+  `, [req.user.id])).rows;
+  res.json({ alerts: rows });
+}));
+
+// POST /api/events/alerts/dismiss/:id — descartar alerta de la pantalla
+app.post('/api/events/alerts/dismiss/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  await q('UPDATE events SET alert_dismissed = true WHERE id = $1 AND user_id = $2', [id, req.user.id]);
+  res.json({ ok: true });
+}));
+
+// GET /api/events/summary — resumen de actividades del usuario
+app.get('/api/events/summary', auth, wrap(async (req, res) => {
+  const isA = isAdm(req.user);
+  const uid = req.user.id;
+  const whereUser = isA ? '' : 'WHERE user_id = ' + uid;
+  const rows = (await q(`
+    SELECT
+      count(*)::int AS total,
+      count(*) FILTER (WHERE inicio::date = CURRENT_DATE)::int AS hoy,
+      count(*) FILTER (WHERE inicio::date = CURRENT_DATE + interval '1 day')::int AS manana,
+      count(*) FILTER (WHERE inicio >= now() AND inicio <= now() + interval '7 days')::int AS semana
+    FROM events ${whereUser}
+  `)).rows[0];
+  res.json(rows);
+}));
+
+// GET /api/events — lista de eventos (propio para visitador, todos para admin con filtros)
+app.get('/api/events', auth, wrap(async (req, res) => {
+  const isA = isAdm(req.user);
+  const { from, to, user_id } = req.query;
+  const wheres = [], params = [];
+  if (!isA) { params.push(req.user.id); wheres.push(`e.user_id = $${params.length}`); }
+  else if (user_id) { params.push(+user_id); wheres.push(`e.user_id = $${params.length}`); }
+  if (from) { params.push(from); wheres.push(`e.inicio >= $${params.length}`); }
+  if (to)   { params.push(to);   wheres.push(`e.inicio <= $${params.length}`); }
+  const where = wheres.length ? 'WHERE ' + wheres.join(' AND ') : '';
+  const rows = (await q(
+    `SELECT e.*, u.nombre AS user_nombre, u.email AS user_email
+     FROM events e JOIN users u ON u.id = e.user_id
+     ${where} ORDER BY e.inicio ASC`, params)).rows;
+  res.json({ rows });
+}));
+
+// POST /api/events — crear evento
+app.post('/api/events', auth, wrap(async (req, res) => {
+  const { titulo, descripcion, ubicacion, inicio, fin, todo_el_dia, medico_ref, recordatorio_min, categoria, color } = req.body;
+  if (!titulo || !inicio || !fin) return res.status(400).json({ error: 'titulo, inicio y fin son requeridos' });
+  const remMin = recordatorio_min !== undefined ? parseInt(recordatorio_min) : 60;
+  const r = await q(
+    `INSERT INTO events(user_id, titulo, descripcion, ubicacion, inicio, fin, todo_el_dia, medico_ref, recordatorio_min, categoria, color)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [req.user.id, titulo, descripcion || null, ubicacion || null,
+     inicio, fin, !!todo_el_dia, medico_ref || null, remMin,
+     categoria || 'visita', color || '#0f9d8a']);
+  await logActivity(req, 'CREAR_EVENTO', 'Agendar', `Creó evento "${titulo}" (${inicio})`);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+// PUT /api/events/:id — editar evento
+app.put('/api/events/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const ev = (await q('SELECT * FROM events WHERE id=$1', [id])).rows[0];
+  if (!ev) return res.status(404).json({ error: 'Evento no encontrado' });
+  if (ev.user_id !== req.user.id && !isAdm(req.user)) return res.status(403).json({ error: 'Sin permisos' });
+  const { titulo, descripcion, ubicacion, inicio, fin, todo_el_dia, medico_ref, recordatorio_min, categoria, color } = req.body;
+  const remMin = recordatorio_min !== undefined ? parseInt(recordatorio_min) : ev.recordatorio_min;
+  await q(
+    `UPDATE events SET titulo=$1,descripcion=$2,ubicacion=$3,inicio=$4,fin=$5,
+      todo_el_dia=$6,medico_ref=$7,recordatorio_min=$8,categoria=$9,color=$10,notif_enviada=false,alert_dismissed=false,updated_at=now()
+     WHERE id=$11`,
+    [titulo||ev.titulo, descripcion??ev.descripcion, ubicacion??ev.ubicacion,
+     inicio||ev.inicio, fin||ev.fin, todo_el_dia??ev.todo_el_dia,
+     medico_ref??ev.medico_ref, remMin, categoria||ev.categoria||'visita', color||ev.color||'#0f9d8a', id]);
+  await logActivity(req, 'EDITAR_EVENTO', 'Agendar', `Editó evento "${titulo||ev.titulo}" (#${id})`);
+  res.json({ ok: true });
+}));
+
+// DELETE /api/events/:id — eliminar evento
+app.delete('/api/events/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const ev = (await q('SELECT * FROM events WHERE id=$1', [id])).rows[0];
+  if (!ev) return res.status(404).json({ error: 'Evento no encontrado' });
+  if (ev.user_id !== req.user.id && !isAdm(req.user)) return res.status(403).json({ error: 'Sin permisos' });
+  await q('DELETE FROM events WHERE id=$1', [id]);
+  await logActivity(req, 'ELIMINAR_EVENTO', 'Agendar', `Eliminó evento "${ev.titulo}" (#${id})`);
+  res.json({ ok: true });
+}));
+
+// GET /api/events/users — lista de usuarios para filtro admin
+app.get('/api/events/users', auth, admin, wrap(async (req, res) => {
+  const rows = (await q('SELECT id, nombre, email FROM users WHERE activo ORDER BY nombre')).rows;
+  res.json(rows);
+}));
+
 app.use('/uploads', auth, express.static(UPLOADS));
 app.use(express.static(path.join(__dirname, 'public')));
 
 initDb().then(() => {
+  // Iniciar job de recordatorios
+  startReminderJob();
+
   // HTTP en :3000
   http.createServer(app).listen(3000, () => console.log('Visitas ERP HTTP  en :3000'));
 
