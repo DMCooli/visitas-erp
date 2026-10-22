@@ -96,14 +96,29 @@ canvas.sig{width:100%;max-width:420px;height:150px;border:1px dashed var(--mut);
 const $ = s => document.querySelector(s), root = $('#root');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const toast = (m, err) => { const t = $('#toast'); t.textContent = m; t.style.background = err ? 'var(--dg)' : ''; t.style.color = err ? '#fff' : ''; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); };
+let isAuthRedirecting = false;
 const api = async (u, o = {}) => {
   try {
     const r = await fetch(u, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: o.body ? JSON.stringify(o.body) : undefined });
     const d = await r.json().catch(() => ({}));
-    if (r.status === 401 && me) {
-      if (navigator.onLine) location.reload();
+    if (r.status === 401) {
+      const err = new Error(d.error || 'No autenticado');
+      err.status = 401;
+      // NUNCA hacer location.reload() en 401 para evitar bucle infinito de recargas continuas
+      if (me && !isAuthRedirecting) {
+        isAuthRedirecting = true;
+        me = null;
+        try { await dbSaveCache('me', null); } catch {}
+        loginScreen();
+        setTimeout(() => { isAuthRedirecting = false; }, 1000);
+      }
+      throw err;
     }
-    if (!r.ok) throw new Error(d.error || 'Error en petición');
+    if (!r.ok) {
+      const err = new Error(d.error || 'Error en petición');
+      err.status = r.status;
+      throw err;
+    }
     return d;
   } catch (err) {
     if (!navigator.onLine || err.message.includes('fetch') || err.message.includes('Network') || err.message.includes('Load failed')) {
@@ -330,7 +345,12 @@ async function boot() {
     me = await api('/api/me');
     await dbSaveCache('me', me);
   } catch (e) {
-    me = await dbGetCache('me');
+    if (e && e.isOffline) {
+      me = await dbGetCache('me');
+    } else {
+      me = null;
+      try { await dbSaveCache('me', null); } catch {}
+    }
   }
   if (!me) return loginScreen();
 
@@ -354,7 +374,12 @@ async function boot() {
   checkPendingAndSync();
 }
 async function loginScreen() {
-  const cfg = await api('/api/config');
+  let cfg = { firebaseConfig: {} };
+  try {
+    cfg = await api('/api/config');
+  } catch (e) {
+    console.warn('Error al obtener config:', e);
+  }
   const hasFb = cfg.firebaseConfig && cfg.firebaseConfig.apiKey && cfg.firebaseConfig.projectId;
   root.innerHTML = `<div class="login"><div class="card">
     <div class="logo" style="color:var(--tx);font-size:22px;padding:0 0 8px">Visitas<span style="color:var(--ac)">ERP</span></div>
@@ -431,8 +456,11 @@ function shell() {
   document.querySelectorAll('[data-go]').forEach(a => a.onclick = () => go(a.dataset.go));
   $('#out').onclick = async () => {
     try { if (window.firebase && firebase.apps.length) await firebase.auth().signOut(); } catch (e) {}
-    await api('/api/auth/logout', { method: 'POST' });
-    me = null; location.hash = ''; boot();
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+    me = null;
+    try { await dbSaveCache('me', null); } catch {}
+    location.hash = '';
+    boot();
   };
   bindTheme();
   updateNetStatus();
