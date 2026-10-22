@@ -1440,7 +1440,7 @@ function detail(v, reload) {
 }
 
 // ---------- Configuración ----------
-async function vConfig(tab) {
+async function vConfig(tab = 'usuarios', subcat = 'muestras') {
   const main = $('#main');
   const tabs = `<h1>Configuración</h1><div class="tabs">${[['usuarios', 'Usuarios'], ['institucion', 'Tipos de institución'], ['especialidad', 'Especialidades'], ['producto', 'Muestras / Productos']].map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
   if (tab === 'usuarios') {
