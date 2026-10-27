@@ -1,6 +1,6 @@
 {
-  "name": "Visitas ERP - GammaFood",
-  "short_name": "VisitasERP",
+  "name": "Visitas Medicas ERP - GammaFood",
+  "short_name": "Visitas Medicas",
   "description": "Sistema de Gestión y Registro de Visitas Médicas GammaFood",
   "start_url": "/",
   "scope": "/",

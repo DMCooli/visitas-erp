@@ -1,5 +1,5 @@
-// Service Worker para Visitas ERP - GammaFood
-const CACHE_NAME = 'visitas-erp-v10';
+// Service Worker para Visitas Medicas ERP - GammaFood
+const CACHE_NAME = 'visitas-erp-v12';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -99,7 +99,7 @@ self.addEventListener('sync', event => {
 // Soporte para Notificaciones Web Push
 self.addEventListener('push', event => {
   let data = {
-    title: '🔔 Visitas ERP — Recordatorio',
+    title: '🔔 Visitas Medicas ERP — Recordatorio',
     body: 'Tienes actividades agendadas pendientes.',
     data: { url: '/#agendar' }
   };

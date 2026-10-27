@@ -31,7 +31,7 @@ const F = ['tipo_visita', 'cedula', 'lugar_visita', 'estado', 'ciudad', 'zona', 
   'otra_institucion', 'horario_otra_institucion', 'muestras_entregadas', 'muestras_detalle', 'instagram', 'facebook', 'otras_redes', 'secretaria_nombre',
   'secretaria_fecha_nacimiento', 'secretaria_telefono', 'direccion', 'secretaria_facebook', 'secretaria_instagram',
   'secretaria_otras_redes', 'pacientes_diarios', 'costo_consultas', 'usaria_producto', 'prescribe_suplementos',
-  'prescribira_suplementos', 'comprometido', 'observaciones', 'ubicacion'];
+  'prescribira_suplementos', 'comprometido', 'observaciones', 'ubicacion', 'productos_entregados', 'productos_detalle'];
 
 const PRODUCTOS_INICIALES = ['Producto A', 'Producto B', 'Producto C'];
 const INSTITUCIONES = ['Farmacia', 'Droguería', 'Hospital Público', 'Hospital Militar', 'Clínica Privada', 'Clínica Popular',
@@ -82,6 +82,8 @@ async function initDb() {
   await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS client_uuid TEXT');
   await q('CREATE UNIQUE INDEX IF NOT EXISTS visits_client_uuid ON visits(client_uuid) WHERE client_uuid IS NOT NULL');
   await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS fecha_offline TIMESTAMPTZ');
+  await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS productos_entregados TEXT');
+  await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS productos_detalle TEXT');
 
   if (!(await q('SELECT 1 FROM catalogs LIMIT 1')).rowCount) {
     for (const n of INSTITUCIONES) await q("INSERT INTO catalogs(tipo,nombre) VALUES('institucion',$1)", [n]);
@@ -631,7 +633,7 @@ function startReminderJob() {
         }
 
         await sendPushToUser(ev.user_id, {
-          title: 'Visitas ERP — Recordatorio',
+          title: 'Visitas Medicas ERP — Recordatorio',
           body: msg,
           icon: '/icons/icon-192.png',
           badge: '/icons/icon-192.png',
@@ -788,13 +790,13 @@ initDb().then(() => {
   startReminderJob();
 
   // HTTP en :3000
-  http.createServer(app).listen(3000, () => console.log('Visitas ERP HTTP  en :3000'));
+  http.createServer(app).listen(3000, () => console.log('Visitas Medicas ERP HTTP  en :3000'));
 
   // HTTPS en :3443 (si hay certificados disponibles)
   const certPath = '/data/certs/cert.pem', keyPath = '/data/certs/key.pem';
   if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
     https.createServer({ cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) }, app)
-      .listen(3443, () => console.log('Visitas ERP HTTPS en :3443'));
+      .listen(3443, () => console.log('Visitas Medicas ERP HTTPS en :3443'));
   } else {
     console.warn('Sin certificados SSL — solo HTTP disponible.');
   }

@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="VisitasERP">
+<meta name="apple-mobile-web-app-title" content="Visitas Medicas ERP">
 <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -330,11 +330,11 @@ const SECTIONS = [
   ['Contacto', [['encargado','Encargado'],['responsable','Responsable'],['contacto','Contacto (teléfono)','tel'],['mas_info_contacto','Más información de contacto'],['correo','Correo electrónico','email']]],
   ['Redes sociales', [['instagram','Instagram'],['facebook','Facebook'],['otras_redes','Otras redes sociales']]],
   ['Secretaria', [['secretaria_nombre','Nombre de secretaria'],['secretaria_fecha_nacimiento','Fecha de nacimiento','date'],['secretaria_telefono','Nro. de teléfono','tel'],['secretaria_facebook','Facebook'],['secretaria_instagram','Instagram'],['secretaria_otras_redes','Otras redes sociales']]],
-  ['Evaluación comercial', [['muestras_entregadas','Muestras médicas entregadas','yn'],['muestras_detalle','Detalle de muestras entregadas','hidden'],['usaria_producto','Usaría el producto','yn'],['prescribe_suplementos','Prescribe suplementos','yn'],['prescribira_suplementos','Prescribirá suplementos','yn'],['comprometido','Comprometido','yn'],['observaciones','Observaciones o sugerencias','area']]]
+  ['Evaluación comercial', [['muestras_entregadas','Muestras médicas entregadas','yn'],['muestras_detalle','Detalle de muestras entregadas','hidden'],['productos_entregados','Productos entregados','yn'],['productos_detalle','Detalle de productos entregados','hidden'],['usaria_producto','Usaría el producto','yn'],['prescribe_suplementos','Prescribe suplementos','yn'],['prescribira_suplementos','Prescribirá suplementos','yn'],['comprometido','Comprometido','yn'],['observaciones','Observaciones o sugerencias','area']]]
 ];
 const ALLF = SECTIONS.flatMap(s => s[1]);
-const LABEL = Object.fromEntries([...ALLF.map(f => [f[0], f[1]]), ['tipo_visita','Tipo de visita'], ['ubicacion','Ubicación'], ['muestras_detalle','Muestras entregadas (detalle)'], ['cedula','DNI / Cédula']]);
-const PREFILL = ['cedula','lugar_visita','estado','ciudad','zona','razon_social','direccion','cliente','fecha_nacimiento','nro_colegiado','especialidad','operaciones_mensuales','pacientes_diarios','costo_consultas','horario_trabajo','otra_institucion','horario_otra_institucion','encargado','responsable','contacto','mas_info_contacto','correo','instagram','facebook','otras_redes','secretaria_nombre','secretaria_fecha_nacimiento','secretaria_telefono','secretaria_facebook','secretaria_instagram','secretaria_otras_redes','muestras_entregadas','muestras_detalle'];
+const LABEL = Object.fromEntries([...ALLF.map(f => [f[0], f[1]]), ['tipo_visita','Tipo de visita'], ['ubicacion','Ubicación'], ['muestras_detalle','Muestras entregadas (detalle)'], ['productos_detalle','Productos entregados (detalle)'], ['cedula','DNI / Cédula']]);
+const PREFILL = ['cedula','lugar_visita','estado','ciudad','zona','razon_social','direccion','cliente','fecha_nacimiento','nro_colegiado','especialidad','operaciones_mensuales','pacientes_diarios','costo_consultas','horario_trabajo','otra_institucion','horario_otra_institucion','encargado','responsable','contacto','mas_info_contacto','correo','instagram','facebook','otras_redes','secretaria_nombre','secretaria_fecha_nacimiento','secretaria_telefono','secretaria_facebook','secretaria_instagram','secretaria_otras_redes','muestras_entregadas','muestras_detalle','productos_entregados','productos_detalle'];
 
 let me = null, cat = { institucion: [], especialidad: [], muestra: [], producto: [] }, geo = {}, rows = [], page = 0, view = 'dash';
 const PS = 25;
@@ -386,7 +386,7 @@ async function loginScreen() {
   }
   const hasFb = cfg.firebaseConfig && cfg.firebaseConfig.apiKey && cfg.firebaseConfig.projectId;
   root.innerHTML = `<div class="login"><div class="card">
-    <div class="logo" style="color:var(--tx);font-size:22px;padding:0 0 8px">Visitas<span style="color:var(--ac)">ERP</span></div>
+    <div class="logo" style="color:var(--tx);font-size:22px;padding:0 0 8px">Visitas Medicas <span style="color:var(--ac)">ERP</span></div>
     <h1 style="font-size:18px;margin-bottom:8px">Iniciar Sesión</h1>
     <p style="color:var(--mut);margin-bottom:24px">Ingresa con tu cuenta de Gmail autorizada</p>
     ${hasFb ? `
@@ -920,11 +920,19 @@ function fieldHtml([n, l, t, req]) {
         </div>
       </div>`;
     }
+    if (n === 'productos_entregados') {
+      i += `<div id="productos_box" style="display:none;margin-top:8px">
+        <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(59,130,246,.12);border:1px solid #3b82f6;border-radius:8px;font-size:13px;color:var(--tx)">
+          <span id="productos_resumen"></span>
+          <button type="button" class="btn sec sm" id="btn_editar_productos" style="padding:2px 8px;font-size:12px">Modificar</button>
+        </div>
+      </div>`;
+    }
   }
   else if (t === 'esp') i = `<input id="${id}" list="dl_esp" autocomplete="off"><datalist id="dl_esp">${opts(cat.especialidad.map(o => o.nombre))}</datalist>`;
   else i = `<input id="${id}" type="${t || 'text'}"${r}>`;
 
-  const isProtectable = !['muestras_entregadas','muestras_detalle','usaria_producto','prescribe_suplementos','prescribira_suplementos','comprometido','observaciones'].includes(n);
+  const isProtectable = !['muestras_entregadas','muestras_detalle','productos_entregados','productos_detalle','usaria_producto','prescribe_suplementos','prescribira_suplementos','comprometido','observaciones'].includes(n);
   const editBtn = isProtectable ? `<button type="button" class="btn-edit-fld" data-target="${id}" title="Editar este campo">✏️ <span>Editar</span></button>` : '';
 
   return `<label class="fld ${t === 'area' ? 'full' : ''}" id="lbl_${n}"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><span>${l}${req ? ' *' : ''}</span>${editBtn}</div>${i}</label>`;
@@ -1130,8 +1138,121 @@ async function vNueva() {
     if (btnEdit) btnEdit.onclick = openMuestrasModal;
   }
 
+  // ---------- Productos entregados ----------
+  const selProductos = $('#f_productos_entregados');
+  const boxProductos = $('#productos_box');
+  const txtResumenProd = $('#productos_resumen');
+  const hidDetalleProd = $('#f_productos_detalle');
+
+  const parseProductos = str => {
+    const res = {};
+    if (!str) return res;
+    str.split(',').forEach(part => {
+      const m = /(.*)\s*\((\d+)\)/.exec(part.trim());
+      if (m) res[m[1].trim()] = m[2];
+    });
+    return res;
+  };
+
+  const updateProductosUI = () => {
+    if (selProductos && boxProductos) {
+      if (selProductos.value === 'Sí' && hidDetalleProd && hidDetalleProd.value) {
+        txtResumenProd.textContent = 'Productos: ' + hidDetalleProd.value;
+        boxProductos.style.display = 'block';
+      } else {
+        boxProductos.style.display = 'none';
+        if (selProductos.value !== 'Sí' && hidDetalleProd) hidDetalleProd.value = '';
+      }
+    }
+  };
+
+  const openProductosModal = () => {
+    const current = parseProductos(hidDetalleProd ? hidDetalleProd.value : '');
+    const prods = (cat.producto && cat.producto.length)
+      ? cat.producto.map(p => (p.codigo ? p.codigo + ' — ' : '') + p.nombre)
+      : [];
+    if (!prods.length) {
+      toast('No hay productos registrados. Agrega productos en Configuración → Muestras / Productos.', 1);
+      selProductos.value = '';
+      return;
+    }
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="card" style="max-width:480px;width:100%;max-height:90vh;overflow-y:auto">
+        <div class="row2" style="justify-content:space-between;margin-bottom:8px">
+          <h2 style="margin:0">Productos entregados</h2>
+          <button type="button" class="btn sec sm" id="p_close" style="font-size:16px;padding:2px 8px">✕</button>
+        </div>
+        <p style="color:var(--mut);font-size:13px;margin:0 0 16px">Selecciona los productos entregados e ingresa la cantidad (máximo 4 dígitos):</p>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px" id="p_list">
+          ${prods.map(p => {
+            const qty = current[p] || '';
+            const isChecked = !!qty;
+            return `
+              <div class="p_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;font-weight:500;margin:0">
+                  <input type="checkbox" class="p_chk" data-prod="${esc(p)}" ${isChecked ? 'checked' : ''} style="width:18px;height:18px;accent-color:#3b82f6;cursor:pointer">
+                  <span>${esc(p)}</span>
+                </label>
+                <div class="p_qty_wrap" style="display:${isChecked ? 'inline-flex' : 'none'};align-items:center;gap:6px">
+                  <span style="font-size:12px;color:var(--mut)">Cant:</span>
+                  <input type="text" inputmode="numeric" pattern="[0-9]*" class="p_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="0" maxlength="4" style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <div class="row2" style="justify-content:flex-end;gap:10px">
+          <button type="button" class="btn sec" id="p_cancel">Cancelar</button>
+          <button type="button" class="btn" id="p_save" style="background:#3b82f6">Guardar productos</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelectorAll('.p_chk').forEach(chk => {
+      const row = chk.closest('.p_row');
+      const wrap = row.querySelector('.p_qty_wrap');
+      const inp = row.querySelector('.p_qty');
+      chk.onchange = () => {
+        if (chk.checked) { wrap.style.display = 'inline-flex'; if (!inp.value || inp.value === '0') inp.value = '1'; inp.focus(); inp.select(); }
+        else { wrap.style.display = 'none'; inp.value = ''; }
+      };
+      inp.oninput = () => { inp.value = inp.value.replace(/[^0-9]/g, '').slice(0, 4); };
+    });
+    const close = () => modal.remove();
+    modal.querySelector('#p_close').onclick = () => { if (!hidDetalleProd.value) selProductos.value = 'No'; close(); updateProductosUI(); };
+    modal.querySelector('#p_cancel').onclick = () => { if (!hidDetalleProd.value) selProductos.value = 'No'; close(); updateProductosUI(); };
+    modal.querySelector('#p_save').onclick = () => {
+      const selected = []; let hasError = false;
+      modal.querySelectorAll('.p_chk').forEach(chk => {
+        if (chk.checked) {
+          const p = chk.dataset.prod;
+          const qty = chk.closest('.p_row').querySelector('.p_qty').value.trim();
+          if (!qty || parseInt(qty, 10) <= 0) { hasError = true; toast('Introduce la cantidad para ' + p, 1); }
+          else selected.push(`${p} (${parseInt(qty, 10)})`);
+        }
+      });
+      if (hasError) return;
+      if (!selected.length) { toast('Selecciona al menos un producto o indica "No"', 1); return; }
+      hidDetalleProd.value = selected.join(', ');
+      selProductos.value = 'Sí';
+      close(); updateProductosUI();
+      toast('Productos registrados correctamente');
+    };
+  };
+
+  if (selProductos) {
+    selProductos.onchange = () => {
+      if (selProductos.value === 'Sí') openProductosModal();
+      else { if (hidDetalleProd) hidDetalleProd.value = ''; updateProductosUI(); }
+    };
+    const btnEditProd = $('#btn_editar_productos');
+    if (btnEditProd) btnEditProd.onclick = openProductosModal;
+  }
+
   // Protección de campos para visitas recurrentes
-  const protectableFields = ALLF.filter(f => !['muestras_entregadas','muestras_detalle','usaria_producto','prescribe_suplementos','prescribira_suplementos','comprometido','observaciones'].includes(f[0])).map(f => f[0]);
+  const protectableFields = ALLF.filter(f => !['muestras_entregadas','muestras_detalle','productos_entregados','productos_detalle','usaria_producto','prescribe_suplementos','prescribira_suplementos','comprometido','observaciones'].includes(f[0])).map(f => f[0]);
 
   const setProtectedMode = (isProtected) => {
     protectableFields.forEach(k => {
@@ -1217,6 +1338,9 @@ async function vNueva() {
         if (selMuestras) selMuestras.value = '';
         if (hidDetalle) hidDetalle.value = '';
         if (boxMuestras) boxMuestras.style.display = 'none';
+        if (selProductos) selProductos.value = '';
+        if (hidDetalleProd) hidDetalleProd.value = '';
+        if (boxProductos) boxProductos.style.display = 'none';
         ['usaria_producto','prescribe_suplementos','prescribira_suplementos','comprometido','observaciones'].forEach(k => {
           const el = $('#f_' + k); if (el) el.value = '';
         });
@@ -1275,6 +1399,8 @@ async function vNueva() {
       const x = r[d.dataset.i];
       PREFILL.forEach(k => { const el = $('#f_' + k); if (el) el.value = x[k] || ''; });
       if (x.estado) updateCiudades(x.estado, true);
+      updateMuestrasUI();
+      updateProductosUI();
       if (x.cedula) {
         const m = /^([VEPJG]-)(.+)$/i.exec(x.cedula.trim());
         if (m) {
