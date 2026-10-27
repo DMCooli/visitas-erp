@@ -451,7 +451,7 @@ function shell() {
   if (me.admin) nav.push(['config','Configuración']);
   if (me.can_view_logs) nav.push(['logs','Logs']);
   root.innerHTML = `<div id="app"><aside>
-    <div class="logo">Visitas<span>ERP</span></div>
+    <div class="logo">Visitas Médicas <span>ERP</span></div>
     <div id="net_pill_wrap" style="padding:0 8px 10px"></div>
     ${nav.map(([k, l]) => `<a data-go="${k}">${l}</a>`).join('')}
     <div class="me">${esc(me.nombre)}<br><span style="opacity:.7">${esc(me.email)} · ${esc(me.rol)}</span>
