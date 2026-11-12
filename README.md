@@ -1,4 +1,4 @@
-# Visitas ERP - Sistema de Gestión y Auditoría Médica (PWA)
+# Visitas ERP - Sistema para Visitadores Medicos y Gestion de Pedidos (PWA)
 
 Solución web empresarial y PWA (Progressive Web App) **Offline-First** diseñada para la gestión, auditoría y control en tiempo real de visitas médicas e institucionales. Permite registrar doctores, instituciones de salud, entregas de muestras de productos con cantidades, firmas digitales en pantalla táctil, fotografías y geolocalización GPS, con capacidad de operar al 100% tanto con conexión como en zonas sin cobertura o sin internet.
 
