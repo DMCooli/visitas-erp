@@ -55,7 +55,61 @@ canvas.sig{width:100%;max-width:420px;height:150px;border:1px dashed var(--mut);
 .kv img{max-width:100%;max-height:260px;border-radius:8px;background:#fff}
 #toast{position:fixed;bottom:20px;right:20px;background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:8px;display:none;z-index:30}
 .login{min-height:100vh;display:grid;place-items:center;padding:20px}.login .card{max-width:380px;text-align:center;padding:32px}
-@media(max-width:800px){#app{flex-direction:column}aside{width:100%;height:auto;position:static;flex-direction:row;flex-wrap:wrap;align-items:center}.logo{padding:4px 8px}.me{margin:0;border:0;width:100%}main{padding:14px}.kv{grid-template-columns:1fr}}
+.aside-header{display:flex;flex-direction:column;width:100%}
+.aside-header-actions{display:flex;flex-direction:column;width:100%}
+.btn-user-avatar{display:none}
+.nav-scroll{display:flex;flex-direction:column;gap:4px;flex:1}
+
+/* Modo Vertical (Portrait) en Tablets y Teléfonos Móviles */
+@media screen and (orientation: portrait) and (max-width: 1024px), screen and (max-width: 600px) and (orientation: portrait) {
+  #app{flex-direction:column}
+  aside{width:100%;height:auto;position:sticky;top:0;z-index:50;flex-direction:column;padding:10px 12px 6px;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+  .aside-header{flex-direction:row;align-items:center;justify-content:space-between}
+  .aside-header .logo{padding:0;font-size:16px;white-space:nowrap}
+  .aside-header-actions{flex-direction:row;align-items:center;gap:8px;width:auto}
+  .aside-header-actions #net_pill_wrap{padding:0 !important}
+  .btn-user-avatar{display:grid !important;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--ac);color:var(--acx);font-weight:700;font-size:12px;border:none;cursor:pointer;flex-shrink:0}
+  .nav-scroll{
+    display:flex !important;
+    flex-direction:row !important;
+    flex-wrap:nowrap !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    -webkit-overflow-scrolling:touch !important;
+    scrollbar-width:none !important;
+    -ms-overflow-style:none !important;
+    width:100% !important;
+    gap:6px !important;
+    padding:4px 2px 6px !important;
+  }
+  .nav-scroll::-webkit-scrollbar{display:none !important}
+  .nav-scroll a{
+    flex-shrink:0 !important;
+    white-space:nowrap !important;
+    padding:7px 14px !important;
+    font-size:13px !important;
+    border-radius:20px !important;
+    background:rgba(255,255,255,.08) !important;
+    text-align:center !important;
+    transition:background .15s ease !important;
+  }
+  .nav-scroll a.on{
+    background:var(--ac) !important;
+    color:var(--acx) !important;
+    font-weight:700 !important;
+    box-shadow:0 1px 4px rgba(0,0,0,.2) !important;
+  }
+  .me{display:none}
+  .me.mobile-open{
+    display:block !important;
+    width:100% !important;
+    margin-top:6px !important;
+    padding:10px 4px 4px !important;
+    border-top:1px solid rgba(255,255,255,.12) !important;
+  }
+  main{padding:14px 12px}
+  .kv{grid-template-columns:1fr}
+}
 .fld-protected{background:var(--bg)!important;opacity:0.8!important;cursor:not-allowed!important;border-style:dashed!important}
 .btn-edit-fld{display:none;align-items:center;gap:3px;background:none;border:none;cursor:pointer;color:var(--ac);font-size:12px;font-weight:600;padding:2px 6px;border-radius:4px}
 .btn-edit-fld:hover{background:rgba(15,157,138,.12)}
@@ -97,10 +151,123 @@ const $ = s => document.querySelector(s), root = $('#root');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const toast = (m, err) => { const t = $('#toast'); t.textContent = m; t.style.background = err ? 'var(--dg)' : ''; t.style.color = err ? '#fff' : ''; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); };
 let isAuthRedirecting = false;
+
+// ---------- Dispositivos y Autenticación Offline (Opción 2 + 3) ----------
+function getDeviceId() {
+  let did = localStorage.getItem('visitas_device_id');
+  if (!did) {
+    did = 'dev_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now().toString(36)));
+    localStorage.setItem('visitas_device_id', did);
+  }
+  return did;
+}
+
+function getDeviceFriendlyName() {
+  const ua = navigator.userAgent;
+  let os = 'Dispositivo';
+  if (/android/i.test(ua)) os = 'Android';
+  else if (/iPhone/i.test(ua)) os = 'iPhone';
+  else if (/iPad/i.test(ua)) os = 'iPad';
+  else if (/Macintosh|Mac OS/i.test(ua)) os = 'Mac';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  let browser = 'Navegador';
+  if (/Chrome/i.test(ua) && !/Edg|OPR/i.test(ua)) browser = 'Chrome';
+  else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browser = 'Safari';
+  else if (/Firefox/i.test(ua)) browser = 'Firefox';
+  else if (/Edg/i.test(ua)) browser = 'Edge';
+
+  return `${browser} en ${os}`;
+}
+
+async function hashPin(pin, salt) {
+  const enc = new TextEncoder();
+  const data = enc.encode((pin || '') + ':' + (salt || ''));
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function isBiometricAvailable() {
+  if (!window.PublicKeyCredential) return false;
+  try {
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  } catch (e) { return false; }
+}
+
+async function registerBiometrics(userId, email) {
+  if (!window.PublicKeyCredential) throw new Error('Biometría no soportada en este navegador');
+  const challenge = new Uint8Array(32);
+  crypto.getRandomValues(challenge);
+  const cred = await navigator.credentials.create({
+    publicKey: {
+      challenge,
+      rp: { name: 'Visitas Medicas ERP', id: location.hostname },
+      user: {
+        id: new TextEncoder().encode(String(userId || 1)),
+        name: email,
+        displayName: email
+      },
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7 },  // ES256
+        { type: 'public-key', alg: -257 } // RS256
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: 'platform',
+        userVerification: 'preferred'
+      },
+      timeout: 60000
+    }
+  });
+  if (!cred) throw new Error('No se pudo registrar la biometría');
+  return btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+}
+
+async function verifyBiometrics(rawIdBase64) {
+  if (!window.PublicKeyCredential) throw new Error('Biometría no disponible');
+  const challenge = new Uint8Array(32);
+  crypto.getRandomValues(challenge);
+  let allowCredentials = [];
+  if (rawIdBase64) {
+    try {
+      allowCredentials = [{
+        type: 'public-key',
+        id: Uint8Array.from(atob(rawIdBase64), c => c.charCodeAt(0))
+      }];
+    } catch (e) {}
+  }
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId: location.hostname,
+      allowCredentials,
+      userVerification: 'required',
+      timeout: 60000
+    }
+  });
+  return !!assertion;
+}
+
 const api = async (u, o = {}) => {
   try {
-    const r = await fetch(u, { method: o.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: o.body ? JSON.stringify(o.body) : undefined });
+    const headers = { 'Content-Type': 'application/json', ...(o.headers || {}) };
+    const did = getDeviceId();
+    if (did) headers['x-device-id'] = did;
+
+    const r = await fetch(u, { method: o.method || 'GET', headers, body: o.body ? JSON.stringify(o.body) : undefined });
     const d = await r.json().catch(() => ({}));
+
+    if (r.status === 403 && d.code === 'DEVICE_REVOKED') {
+      try { await dbSaveCache('device_binding', null); } catch {}
+      try { await dbSaveCache('me', null); } catch {}
+      me = null;
+      toast('Este dispositivo ha sido revocado o desvinculado por un administrador.', 1);
+      loginScreen();
+      const err = new Error(d.error || 'Dispositivo revocado');
+      err.status = 403;
+      throw err;
+    }
+
     if (r.status === 401) {
       const err = new Error(d.error || 'No autenticado');
       err.status = 401;
@@ -325,7 +492,7 @@ applyTheme();
 
 // ---------- Campos del formulario (mismos que la hoja de registros) ----------
 const SECTIONS = [
-  ['Datos de la visita', [['lugar_visita','Lugar de visita','inst',1],['estado','Estado','estado'],['ciudad','Ciudad','ciudad'],['zona','Zona'],['razon_social','Razón social','text',1],['direccion','Dirección','area']]],
+  ['Datos de la visita', [['lugar_visita','Lugar de visita','inst'],['estado','Estado','estado'],['ciudad','Ciudad','ciudad'],['zona','Zona'],['razon_social','Razón social','text'],['direccion','Dirección','area']]],
   ['Médicos', [['cedula','DNI / Cédula','hidden'],['cliente','Cliente'],['fecha_nacimiento','Fecha de nacimiento','date'],['nro_colegiado','Nro. de colegiado'],['especialidad','Especialidad del médico','esp'],['operaciones_mensuales','Operaciones mensuales'],['pacientes_diarios','Pacientes diarios'],['costo_consultas','Costo de consultas'],['horario_trabajo','Horario de trabajo'],['otra_institucion','Otra institución donde labora'],['horario_otra_institucion','Horario otra institución']]],
   ['Contacto', [['encargado','Encargado'],['responsable','Responsable'],['contacto','Contacto (teléfono)','tel'],['mas_info_contacto','Más información de contacto'],['correo','Correo electrónico','email']]],
   ['Redes sociales', [['instagram','Instagram'],['facebook','Facebook'],['otras_redes','Otras redes sociales']]],
@@ -341,19 +508,43 @@ const PS = 25;
 
 // ---------- Arranque / login ----------
 async function boot() {
+  let isOfflineMode = false;
   try {
     me = await api('/api/me');
     await dbSaveCache('me', me);
+    checkAndEnrollDeviceOnline(me);
   } catch (e) {
     if (e && e.isOffline) {
-      me = await dbGetCache('me');
+      isOfflineMode = true;
+      const binding = await dbGetCache('device_binding');
+      if (binding && binding.user) {
+        if (binding.isTrusted && !binding.requireManualUnlock && !binding.pinHash && !binding.hasBiometrics) {
+          // Dispositivo de confianza total sin PIN ni biometría
+          me = binding.user;
+          toast('📱 Modo Offline: Dispositivo de confianza vinculado', 0);
+          return finishBoot(true);
+        } else if (binding.isTrusted && !binding.requireManualUnlock) {
+          // Dispositivo de confianza con auto-login
+          me = binding.user;
+          toast('📱 Modo Offline: Dispositivo de confianza vinculado', 0);
+          return finishBoot(true);
+        } else {
+          // Requiere desbloqueo
+          return renderOfflineUnlockScreen(binding);
+        }
+      } else {
+        return renderNoDeviceOfflineScreen();
+      }
     } else {
       me = null;
       try { await dbSaveCache('me', null); } catch {}
     }
   }
   if (!me) return loginScreen();
+  return finishBoot(false);
+}
 
+async function finishBoot(isOfflineMode) {
   try {
     cat = await api('/api/catalogs');
     cat.muestra = cat.muestra || [];
@@ -377,6 +568,365 @@ async function boot() {
   updateNetStatus();
   checkPendingAndSync();
 }
+
+function renderOfflineUnlockScreen(binding) {
+  const hasBio = !!binding.hasBiometrics && !!binding.bioCredId;
+  const hasPin = !!binding.pinHash;
+
+  root.innerHTML = `<div class="login"><div class="card" style="max-width:400px;text-align:center">
+    <div class="logo" style="color:var(--tx);font-size:22px;padding:0 0 4px">Visitas Medicas <span style="color:var(--ac)">ERP</span></div>
+    <div style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;background:rgba(245,158,11,.15);color:#d97706;margin:8px 0 16px">
+      <span style="width:7px;height:7px;border-radius:50%;background:#f59e0b"></span> MODO SIN CONEXIÓN
+    </div>
+
+    <div style="background:rgba(15,157,138,.07);border:1px solid rgba(15,157,138,.2);border-radius:12px;padding:14px;margin-bottom:20px;text-align:left">
+      <div style="font-size:11px;color:var(--mut);text-transform:uppercase;font-weight:600;letter-spacing:.5px;margin-bottom:4px">Dispositivo Vinculado</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--ac);color:var(--acx);display:grid;place-items:center;font-size:18px;font-weight:bold">
+          ${(binding.user.nombre || binding.user.email || 'U')[0].toUpperCase()}
+        </div>
+        <div style="overflow:hidden">
+          <div style="font-weight:700;font-size:15px;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(binding.user.nombre || 'Usuario')}</div>
+          <div style="font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(binding.user.email)}</div>
+          <div style="font-size:11px;color:var(--mut);margin-top:2px">📱 ${esc(binding.deviceName || 'Este equipo')}</div>
+        </div>
+      </div>
+    </div>
+
+    ${hasBio ? `
+      <div style="margin-bottom:16px">
+        <button id="btn_unlock_bio" type="button" class="btn" style="width:100%;padding:12px 18px;font-size:15px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:10px;box-shadow:var(--sh);cursor:pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 0-10 10c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
+          <span>Desbloquear con Huella / FaceID</span>
+        </button>
+      </div>
+    ` : ''}
+
+    ${hasPin ? `
+      <div style="margin-top:${hasBio ? '14px' : '0'};padding-top:${hasBio ? '14px' : '0'};${hasBio ? 'border-top:1px dashed var(--bd);' : ''}">
+        <p style="font-size:13px;color:var(--mut);margin-bottom:10px">${hasBio ? 'O ingresa tu PIN de 4 dígitos:' : 'Ingresa tu PIN de 4 dígitos para acceder:'}</p>
+        <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:12px">
+          <input id="unlock_pin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="width:140px;height:44px;text-align:center;font-size:26px;letter-spacing:10px;font-weight:bold;border:2px solid var(--bd);border-radius:8px;background:var(--in);color:var(--tx)">
+          <button id="btn_unlock_pin" class="btn" style="height:44px;padding:0 20px;font-weight:600">Entrar</button>
+        </div>
+      </div>
+    ` : ''}
+
+    ${!hasBio && !hasPin ? `
+      <div>
+        <p style="font-size:13px;color:var(--mut);margin-bottom:16px">Dispositivo de confianza vinculado.</p>
+        <button id="btn_unlock_direct" class="btn" style="width:100%;padding:12px">Entrar al ERP</button>
+      </div>
+    ` : ''}
+
+    <div id="unlock_err" style="color:var(--dg);font-size:13px;min-height:20px;margin:8px 0"></div>
+
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)">
+      <a id="btn_change_account" style="font-size:12px;color:var(--mut);cursor:pointer;text-decoration:underline">Cambiar de cuenta o entrar con Google (Requiere conexión)</a>
+    </div>
+
+    <div class="seg2" style="margin-top:16px">${themeSeg(false)}</div>
+  </div></div>`;
+
+  bindTheme();
+
+  const errEl = $('#unlock_err');
+  const proceedUnlock = async () => {
+    binding.requireManualUnlock = false;
+    try { await dbSaveCache('device_binding', binding); } catch {}
+    me = binding.user;
+    toast('Acceso sin conexión desbloqueado');
+    finishBoot(true);
+  };
+
+  if (hasBio) {
+    const btnBio = $('#btn_unlock_bio');
+    btnBio.onclick = async () => {
+      errEl.textContent = '';
+      btnBio.disabled = true;
+      try {
+        const ok = await verifyBiometrics(binding.bioCredId);
+        if (ok) return proceedUnlock();
+        errEl.textContent = 'Verificación biométrica no completada';
+      } catch (e) {
+        console.error(e);
+        errEl.textContent = e.message || 'Error en sensor biométrico';
+      } finally {
+        btnBio.disabled = false;
+      }
+    };
+  }
+
+  if (hasPin) {
+    const pinInput = $('#unlock_pin');
+    const btnPin = $('#btn_unlock_pin');
+    const tryPin = async () => {
+      errEl.textContent = '';
+      const pin = pinInput.value.trim();
+      if (pin.length !== 4) {
+        errEl.textContent = 'El PIN debe ser de 4 números';
+        pinInput.focus();
+        return;
+      }
+      btnPin.disabled = true;
+      try {
+        const hash = await hashPin(pin, binding.pinSalt);
+        if (hash === binding.pinHash) {
+          return proceedUnlock();
+        } else {
+          errEl.textContent = 'PIN incorrecto. Intenta de nuevo.';
+          pinInput.value = '';
+          pinInput.focus();
+        }
+      } catch (e) {
+        errEl.textContent = 'Error al validar PIN';
+      } finally {
+        btnPin.disabled = false;
+      }
+    };
+
+    btnPin.onclick = tryPin;
+    pinInput.onkeydown = e => { if (e.key === 'Enter') tryPin(); };
+    setTimeout(() => pinInput.focus(), 150);
+  }
+
+  if ($('#btn_unlock_direct')) {
+    $('#btn_unlock_direct').onclick = proceedUnlock;
+  }
+
+  $('#btn_change_account').onclick = async () => {
+    if (!confirm('¿Deseas desvincular este dispositivo temporalmente para iniciar con otra cuenta cuando tengas conexión?')) return;
+    try { await dbSaveCache('device_binding', null); } catch {}
+    try { await dbSaveCache('me', null); } catch {}
+    me = null;
+    loginScreen();
+  };
+}
+
+function renderNoDeviceOfflineScreen() {
+  root.innerHTML = `<div class="login"><div class="card" style="max-width:400px;text-align:center">
+    <div class="logo" style="color:var(--tx);font-size:22px;padding:0 0 8px">Visitas Medicas <span style="color:var(--ac)">ERP</span></div>
+    <div style="font-size:48px;margin:12px 0">📶</div>
+    <h1 style="font-size:18px;margin-bottom:8px">Sin Conexión a Internet</h1>
+    <p style="color:var(--mut);font-size:13px;line-height:1.5;margin-bottom:20px">
+      Este dispositivo no ha sido vinculado todavía para su uso sin conexión.<br><br>
+      Para poder usar el sistema offline en este equipo, <b>conéctate a Internet una sola vez</b> e inicia sesión con tu cuenta de Google autorizada para vincularlo.
+    </p>
+    <button class="btn" style="width:100%;padding:10px" onclick="boot()">Reintentar Conexión</button>
+    <div class="seg2" style="margin-top:20px">${themeSeg(false)}</div>
+  </div></div>`;
+  bindTheme();
+}
+
+async function openDeviceEnrollmentModal(user, isEditing = false, onSuccess = null) {
+  const existing = (await dbGetCache('device_binding')) || {};
+  const isBioAvail = await isBiometricAvailable();
+  let tempBioId = existing.bioCredId || null;
+  let hasBioActive = !!existing.hasBiometrics;
+
+  const m = document.createElement('div');
+  m.className = 'modal';
+  m.innerHTML = `
+    <div class="card" style="max-width:460px;width:100%">
+      <div class="row2" style="justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0;font-size:18px;display:flex;align-items:center;gap:8px">
+          <span>📱</span> ${isEditing ? 'Configurar Dispositivo y Clave' : 'Vincular este Dispositivo'}
+        </h2>
+        ${isEditing ? '<button type="button" class="btn sec sm" id="dev_m_close" style="font-size:16px;padding:2px 8px">✕</button>' : ''}
+      </div>
+
+      <p style="color:var(--mut);font-size:13px;line-height:1.45;margin-bottom:16px">
+        ${isEditing ? 'Gestiona el acceso sin conexión en este equipo. Podrás entrar al ERP en hospitales, sótanos o zonas sin señal.' : 'Vincula este equipo como tu teléfono/computadora de trabajo para poder entrar al ERP incluso cuando no tengas internet.'}
+      </p>
+
+      <div style="background:rgba(15,157,138,.07);border:1px solid rgba(15,157,138,.2);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;color:var(--tx);font-weight:600">
+          <input type="checkbox" id="dev_trusted" ${existing.isTrusted !== false ? 'checked' : ''} style="width:18px;height:18px;margin-top:2px;accent-color:var(--ac);cursor:pointer">
+          <div>
+            <div>Marcar como Dispositivo de Confianza (Auto-Login)</div>
+            <div style="font-weight:400;color:var(--mut);font-size:12px;margin-top:2px">
+              Entra automáticamente a tus visitas y agenda sin pedir clave cada vez que abras la app sin internet.
+            </div>
+          </div>
+        </label>
+      </div>
+
+      ${isBioAvail ? `
+        <div style="background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div>
+              <div style="font-weight:600;font-size:13px">👆 Huella dactilar / FaceID</div>
+              <div style="font-size:12px;color:var(--mut)">Desbloqueo biométrico rápido del dispositivo</div>
+            </div>
+            <button type="button" class="btn sec sm" id="btn_toggle_bio">
+              ${hasBioActive ? '✅ Activa (Cambiar)' : 'Activar Huella'}
+            </button>
+          </div>
+          <div id="bio_status_msg" style="font-size:12px;color:var(--ac);margin-top:6px;display:${hasBioActive ? 'block' : 'none'}">
+            Huella / FaceID vinculada correctamente a este navegador.
+          </div>
+        </div>
+      ` : ''}
+
+      <div style="background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;margin-bottom:20px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px">🔒 PIN de seguridad (4 dígitos)</div>
+        <div style="font-size:12px;color:var(--mut);margin-bottom:10px">
+          ${existing.pinHash ? 'Ya tienes un PIN guardado. Déjalo en blanco para mantenerlo o escribe uno nuevo:' : 'Recomendado como respaldo para entrar sin internet si el sensor falla:'}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label class="fld" style="font-size:12px">
+            PIN (4 números)
+            <input id="dev_pin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align:center;font-size:18px;letter-spacing:6px">
+          </label>
+          <label class="fld" style="font-size:12px">
+            Confirmar PIN
+            <input id="dev_pin_c" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align:center;font-size:18px;letter-spacing:6px">
+          </label>
+        </div>
+      </div>
+
+      <div id="dev_m_err" style="color:var(--dg);font-size:13px;min-height:18px;margin-bottom:12px"></div>
+
+      <div class="row2" style="justify-content:space-between;padding-top:12px;border-top:1px solid var(--bd)">
+        ${isEditing ? `
+          <button type="button" class="btn sec dg sm" id="dev_unlink_btn">Desvincular Equipo</button>
+        ` : `
+          <button type="button" class="btn sec sm" id="dev_skip_btn">Omitir por ahora</button>
+        `}
+        <button type="button" class="btn" id="dev_save_btn">Guardar y Vincular</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(m);
+
+  const close = () => m.remove();
+  if (isEditing) {
+    m.querySelector('#dev_m_close').onclick = close;
+  } else {
+    m.querySelector('#dev_skip_btn').onclick = close;
+  }
+
+  if (isBioAvail) {
+    const btnBio = m.querySelector('#btn_toggle_bio');
+    const msgBio = m.querySelector('#bio_status_msg');
+    btnBio.onclick = async () => {
+      try {
+        btnBio.disabled = true;
+        btnBio.textContent = 'Verificando…';
+        const credId = await registerBiometrics(user.id, user.email);
+        tempBioId = credId;
+        hasBioActive = true;
+        btnBio.textContent = '✅ Huella Configurada';
+        msgBio.style.display = 'block';
+        msgBio.textContent = '¡Huella / FaceID vinculada con éxito!';
+      } catch (e) {
+        toast(e.message || 'Error en sensor biométrico', 1);
+        btnBio.textContent = hasBioActive ? '✅ Activa' : 'Activar Huella';
+      } finally {
+        btnBio.disabled = false;
+      }
+    };
+  }
+
+  if (isEditing && m.querySelector('#dev_unlink_btn')) {
+    m.querySelector('#dev_unlink_btn').onclick = async () => {
+      if (!confirm('¿Deseas desvincular este dispositivo? Ya no podrás ingresar sin conexión desde aquí hasta que vuelvas a vincularlo con internet.')) return;
+      try {
+        await dbSaveCache('device_binding', null);
+        toast('Dispositivo desvinculado localmente');
+        close();
+      } catch (e) {
+        toast('Error al desvincular', 1);
+      }
+    };
+  }
+
+  m.querySelector('#dev_save_btn').onclick = async () => {
+    const errEl = m.querySelector('#dev_m_err');
+    errEl.textContent = '';
+    const pin = m.querySelector('#dev_pin').value.trim();
+    const pinc = m.querySelector('#dev_pin_c').value.trim();
+    const isTrusted = m.querySelector('#dev_trusted').checked;
+
+    let pinHash = existing.pinHash || null;
+    let pinSalt = existing.pinSalt || null;
+
+    if (pin || pinc) {
+      if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+        errEl.textContent = 'El PIN debe ser exactamente de 4 dígitos numéricos';
+        return;
+      }
+      if (pin !== pinc) {
+        errEl.textContent = 'Los dos campos de PIN no coinciden';
+        return;
+      }
+      pinSalt = window.crypto && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36);
+      pinHash = await hashPin(pin, pinSalt);
+    }
+
+    const did = getDeviceId();
+    const dname = getDeviceFriendlyName();
+
+    const binding = {
+      deviceId: did,
+      deviceName: dname,
+      userId: user.id,
+      user: { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol, admin: user.admin, can_view_logs: user.can_view_logs },
+      isTrusted,
+      hasBiometrics: hasBioActive,
+      bioCredId: tempBioId,
+      pinHash,
+      pinSalt,
+      updatedAt: Date.now()
+    };
+
+    try {
+      await api('/api/devices/bind', {
+        method: 'POST',
+        body: {
+          deviceId: did,
+          deviceName: dname,
+          isTrusted,
+          hasBiometrics: hasBioActive,
+          hasPin: !!pinHash
+        }
+      });
+      await dbSaveCache('device_binding', binding);
+
+      close();
+      toast('📱 Dispositivo vinculado exitosamente para acceso sin conexión');
+      if (onSuccess) onSuccess();
+    } catch (e) {
+      errEl.textContent = e.message || 'Error guardando vinculación';
+    }
+  };
+}
+
+async function checkAndEnrollDeviceOnline(user) {
+  const did = getDeviceId();
+  const dname = getDeviceFriendlyName();
+  let binding = await dbGetCache('device_binding');
+
+  if (!binding || binding.userId !== user.id) {
+    // Si no está vinculado aún, abrir automáticamente el modal de vinculación tras un breve retraso
+    setTimeout(() => openDeviceEnrollmentModal(user, false), 800);
+  } else {
+    // Actualizar datos del usuario y sincronizar con servidor
+    binding.user = { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol, admin: user.admin, can_view_logs: user.can_view_logs };
+    await dbSaveCache('device_binding', binding);
+    api('/api/devices/bind', {
+      method: 'POST',
+      body: {
+        deviceId: did,
+        deviceName: dname,
+        isTrusted: !!binding.isTrusted,
+        hasBiometrics: !!binding.hasBiometrics,
+        hasPin: !!binding.pinHash
+      }
+    }).catch(() => {});
+  }
+}
+
 async function loginScreen() {
   let cfg = { firebaseConfig: {} };
   try {
@@ -412,7 +962,7 @@ async function loginScreen() {
   bindTheme();
 
   if (hasFb) {
-    if (!firebase.apps.length) {
+    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
       firebase.initializeApp(cfg.firebaseConfig);
     }
     const btn = $('#gbtn');
@@ -442,22 +992,43 @@ const bindTheme = () => { document.querySelectorAll('[data-t]').forEach(b => b.o
 function shell() {
   const nav = [
     ['dash','Panel'],
+    ['asignaciones','Asignaciones'],
     ['nueva','Nueva visita'],
     ['visitas', me.admin ? 'Todas las visitas' : 'Mis visitas'],
     ['agendar','Agendar'],
     ['pedidos','Pedidos'],
-    ['literatura','Multimedia & Docs']
+    ['literatura','Multimedia & Docs'],
+    ['config','Configuración']
   ];
-  if (me.admin) nav.push(['config','Configuración']);
   if (me.can_view_logs) nav.push(['logs','Logs']);
   root.innerHTML = `<div id="app"><aside>
-    <div class="logo">Visitas Médicas <span>ERP</span></div>
-    <div id="net_pill_wrap" style="padding:0 8px 10px"></div>
-    ${nav.map(([k, l]) => `<a data-go="${k}">${l}</a>`).join('')}
-    <div class="me">${esc(me.nombre)}<br><span style="opacity:.7">${esc(me.email)} · ${esc(me.rol)}</span>
-    <div class="seg">${[['light','Claro'],['dark','Oscuro'],['system','Sistema']].map(([k, l]) => `<button data-t="${k}">${l}</button>`).join('')}</div>
-    <a id="out" style="padding:4px 0;display:block">Cerrar sesión</a></div></aside><main id="main"></main></div>`;
+    <div class="aside-header">
+      <div class="logo">Visitas Médicas <span>ERP</span></div>
+      <div class="aside-header-actions">
+        <div id="net_pill_wrap"></div>
+        <button id="btn_toggle_me_mobile" type="button" class="btn-user-avatar" title="Mi perfil y ajustes">
+          ${(me.nombre || me.email || 'U')[0].toUpperCase()}
+        </button>
+      </div>
+    </div>
+    <nav class="nav-scroll">
+      ${nav.map(([k, l]) => `<a data-go="${k}">${l}</a>`).join('')}
+    </nav>
+    <div class="me" id="aside_me_drawer">${esc(me.nombre)}<br><span style="opacity:.7">${esc(me.email)} · ${esc(me.rol)}</span>
+      <div class="seg">${[['light','Claro'],['dark','Oscuro'],['system','Sistema']].map(([k, l]) => `<button data-t="${k}">${l}</button>`).join('')}</div>
+      <div style="margin-top:10px">
+        <a id="out" style="padding:4px 0;display:block;cursor:pointer;color:var(--mut)">Cerrar sesión</a>
+      </div>
+    </div>
+  </aside><main id="main"></main></div>`;
   document.querySelectorAll('[data-go]').forEach(a => a.onclick = () => go(a.dataset.go));
+  const btnAvatar = $('#btn_toggle_me_mobile');
+  if (btnAvatar) {
+    btnAvatar.onclick = () => {
+      const drawer = $('#aside_me_drawer');
+      if (drawer) drawer.classList.toggle('mobile-open');
+    };
+  }
   $('#out').onclick = async () => {
     try { if (window.firebase && firebase.apps.length) await firebase.auth().signOut(); } catch (e) {}
     try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) {}
@@ -470,13 +1041,20 @@ function shell() {
   updateNetStatus();
 }
 function go(v) {
-  if (v === 'config' && !me.admin) v = 'dash';
   if (v === 'logs' && !me.can_view_logs) v = 'dash';
   view = v; location.hash = v;
-  document.querySelectorAll('[data-go]').forEach(a => a.classList.toggle('on', a.dataset.go === v));
-  const modNames = { dash: 'Panel', nueva: 'Nueva Visita', visitas: 'Visitas', agendar: 'Agendar', pedidos: 'Pedidos', literatura: 'Multimedia & Docs', config: 'Configuración', logs: 'Logs del Sistema' };
+  document.querySelectorAll('[data-go]').forEach(a => {
+    const isOn = a.dataset.go === v;
+    a.classList.toggle('on', isOn);
+    if (isOn) {
+      try { a.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); } catch {}
+    }
+  });
+  const drawer = $('#aside_me_drawer');
+  if (drawer && drawer.classList.contains('mobile-open')) drawer.classList.remove('mobile-open');
+  const modNames = { dash: 'Panel', asignaciones: 'Asignaciones', nueva: 'Nueva Visita', visitas: 'Visitas', agendar: 'Agendar', pedidos: 'Pedidos', literatura: 'Multimedia & Docs', config: 'Configuración', logs: 'Logs del Sistema' };
   api('/api/logs/track', { method: 'POST', body: { modulo: modNames[v] || v, detalle: `Ingresó al módulo ${modNames[v] || v}` } }).catch(() => {});
-  ({ dash: vDash, nueva: vNueva, visitas: vVisitas, agendar: vAgendar, pedidos: vPedidos, literatura: vLiteratura, config: () => vConfig('usuarios'), logs: vLogs }[v] || vDash)().catch(e => toast(e.message, 1));
+  ({ dash: vDash, asignaciones: vAsignaciones, nueva: vNueva, visitas: vVisitas, agendar: vAgendar, pedidos: () => vPedidos(me.admin ? 'solicitudes' : 'pedidos'), literatura: vLiteratura, config: () => vConfig(me.admin ? 'usuarios' : 'dispositivos'), logs: vLogs }[v] || vDash)().catch(e => toast(e.message, 1));
 }
 
 // ---------- Panel ----------
@@ -877,27 +1455,1066 @@ async function vAgendar() {
   render();
 }
 
-// ---------- Pedidos (Módulo en preparación) ----------
-async function vPedidos() {
+// ---------- Pedidos ----------
+function orderStatusBadge(s) {
+  const map = {
+    enviado:   { label: 'Enviado a Planta', color: '#2563eb', bg: 'rgba(37,99,235,.12)' },
+    revision:  { label: 'En Revisión',      color: '#d97706', bg: 'rgba(217,119,6,.12)' },
+    aprobado:  { label: 'Aprobado',         color: '#059669', bg: 'rgba(5,150,105,.12)' },
+    listo:     { label: 'Pedido Listo',     color: '#7c3aed', bg: 'rgba(124,58,237,.12)' },
+    rechazado: { label: 'Rechazado',        color: '#dc2626', bg: 'rgba(220,38,38,.12)' }
+  };
+  const st = map[s] || { label: s || '—', color: 'var(--mut)', bg: 'rgba(0,0,0,.06)' };
+  return `<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;color:${st.color};background:${st.bg}">${st.label}</span>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return new Date(d + 'T00:00:00').toLocaleDateString('es-VE', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+
+async function vPedidos(tab, selectedVisitadorId = null) {
+  // Asegurar que los catálogos de muestras y productos estén cargados desde la base de datos
+  if (!cat.muestra?.length && !cat.producto?.length) {
+    try {
+      const c = await api('/api/catalogs');
+      cat.institucion = c.institucion || [];
+      cat.especialidad = c.especialidad || [];
+      cat.muestra = c.muestra || [];
+      cat.producto = c.producto || [];
+    } catch(e) {}
+  }
+
+  if (!me.admin) tab = 'pedidos';
+  else if (!tab) tab = 'solicitudes';
+
   const main = $('#main');
+  const availableTabs = me.admin
+    ? [['solicitudes','📋 Solicitudes'],['gestion','⚙️ Gestión de Pedidos'],['pedidos','📦 Pedidos']]
+    : [['pedidos','📦 Mis Pedidos']];
+
   main.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
       <div>
         <h1 style="margin:0;display:inline-flex;align-items:center;gap:8px">📦 Pedidos</h1>
-        <p style="margin:2px 0 0;font-size:13px;color:var(--mut)">Módulo de gestión y seguimiento de pedidos</p>
+        <p style="margin:2px 0 0;font-size:13px;color:var(--mut)">Gestión y seguimiento de pedidos de muestras y productos registrados</p>
       </div>
     </div>
-    <div class="card" style="text-align:center;padding:50px 20px;border-top:4px solid var(--ac)">
-      <div style="font-size:48px;margin-bottom:14px">📦</div>
-      <h2 style="margin:0 0 8px;font-size:20px">Módulo de Pedidos</h2>
-      <p style="color:var(--mut);max-width:500px;margin:0 auto 20px;line-height:1.5">
-        Este espacio está preparado para la configuración y flujo operativo de pedidos de visitadores y administración.
-      </p>
-      <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;background:rgba(15,157,138,.1);border:1px solid rgba(15,157,138,.25);color:var(--ac);font-weight:600;font-size:13px">
-        <span>⚙️ En preparación</span>
-      </div>
+    <div class="tabs" id="ped_tabs">
+      ${availableTabs.map(([k,l]) => `<button class="${tab===k?'on':''}" data-t="${k}">${l}</button>`).join('')}
+    </div>
+    <div id="ped_body"></div>
+    <!-- MODAL GENERAL PARA PEDIDOS -->
+    <div id="p_modal" class="modal" style="display:none;z-index:900">
+      <div class="card" style="max-width:760px;width:100%;margin:auto" id="p_modal_inner"></div>
     </div>
   `;
+
+  document.querySelectorAll('#ped_tabs button').forEach(b => {
+    b.onclick = () => vPedidos(b.dataset.t);
+  });
+
+  const body = $('#ped_body');
+
+  // Helper para renderizar items en tablas
+  const renderItemsListHtml = (items) => {
+    if (!items || !items.length) return '<span style="color:var(--mut)">Sin ítems</span>';
+    return `<div style="font-size:12px;line-height:1.45;display:flex;flex-direction:column;gap:3px">
+      ${items.map(it => `
+        <div>
+          <span style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:4px;background:${it.tipo==='muestra'?'rgba(15,157,138,.12)':'rgba(59,130,246,.12)'};color:${it.tipo==='muestra'?'var(--ac)':'#2563eb'}">${it.tipo==='muestra'?'MUESTRA':'PRODUCTO'}</span>
+          <strong>${esc(it.nombre)}</strong>
+          <span style="color:var(--tx);font-weight:600">(${it.cantidad_solicitada} uds)</span>
+          ${it.rechazado ? '<span style="color:#ef4444;font-size:11px;margin-left:4px">❌ Rechazado</span>' : it.cantidad_aprobada !== null && it.cantidad_aprobada !== undefined ? `<span style="color:#10b981;font-size:11px;margin-left:4px">✓ ${it.cantidad_aprobada} aprobadas</span>` : ''}
+        </div>
+      `).join('')}
+    </div>`;
+  };
+
+  const calcTotalQty = (items) => (items || []).reduce((acc, it) => acc + (it.cantidad_solicitada || 0), 0);
+
+  // Helper para armar opciones del select según tipo
+  const getCatalogOptionsHtml = (tipo, selectedId, selectedName) => {
+    const list = tipo === 'producto' ? (cat.producto || []) : (cat.muestra || []);
+    let options = '<option value="">— Seleccione de la lista registrada —</option>';
+    let found = false;
+    list.forEach(c => {
+      const isSel = (selectedId && c.id == selectedId) || (selectedName && c.nombre === selectedName);
+      if (isSel) found = true;
+      const label = c.codigo ? `${c.codigo} — ${c.nombre}` : c.nombre;
+      options += `<option value="${c.id}" data-nombre="${esc(c.nombre)}" ${isSel ? 'selected' : ''}>${esc(label)}</option>`;
+    });
+    // Si viene de un registro anterior que ya no esté en el catálogo activo
+    if (!found && selectedName) {
+      options += `<option value="" data-nombre="${esc(selectedName)}" selected>${esc(selectedName)} (no activo)</option>`;
+    }
+    return options;
+  };
+
+  // ========== TAB 1: SOLICITUDES (solo administradores) ==========
+  if (tab === 'solicitudes') {
+    body.innerHTML = `
+      <div class="card" style="padding:16px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <label style="font-size:13px;font-weight:600;color:var(--mut)">Filtrar por Estado:</label>
+          <select id="pf_status" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-size:13px">
+            <option value="">Todos los estados</option>
+            <option value="enviado">Enviado a Planta</option>
+            <option value="revision">En Revisión</option>
+            <option value="aprobado">Aprobado</option>
+            <option value="listo">Pedido Listo</option>
+            <option value="rechazado">Rechazado</option>
+          </select>
+          <button class="btn sm" id="pf_btn">Filtrar</button>
+          <button class="btn sec sm" id="pf_clr">Limpiar</button>
+        </div>
+        <div id="sol_tbl" class="scroll"><div style="text-align:center;padding:30px;color:var(--mut)">Cargando solicitudes…</div></div>
+      </div>
+    `;
+
+    async function loadSolicitudes() {
+      const st = $('#pf_status').value;
+      const url = '/api/orders' + (st ? '?status=' + st : '');
+      try {
+        const rows = await api(url);
+        const tbl = $('#sol_tbl');
+        if (!rows.length) {
+          tbl.innerHTML = '<p style="color:var(--mut);text-align:center;padding:24px">No hay solicitudes registradas con este criterio.</p>';
+          return;
+        }
+        tbl.innerHTML = `<table>
+          <thead>
+            <tr>
+              <th>Fecha Solicitud</th>
+              <th>Visitador</th>
+              <th>Médico / Destinatario</th>
+              <th>Producto o Muestra</th>
+              <th style="text-align:center">Total Cant.</th>
+              <th>Fecha Entrega</th>
+              <th>Estatus</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(o => `
+              <tr>
+                <td style="white-space:nowrap">${fmtDate(o.fecha_solicitud)}</td>
+                <td><strong>${esc(o.visitador_nombre || o.visitador_email)}</strong></td>
+                <td>${esc(o.medico)}</td>
+                <td>${renderItemsListHtml(o.items)}</td>
+                <td style="text-align:center"><span class="badge" style="font-size:12px">${calcTotalQty(o.items)}</span></td>
+                <td style="white-space:nowrap">${fmtDate(o.fecha_entrega)}</td>
+                <td>${orderStatusBadge(o.status)}</td>
+                <td style="white-space:nowrap">
+                  <button class="btn sm" data-oid="${o.id}" data-act="sol_ver">Ver</button>
+                  <button class="btn sm sec" data-vid="${o.visitador_id}" data-act="sol_gestionar" style="margin-left:4px" title="Ir a Gestión de Pedidos">Gestionar</button>
+                  ${o.status === 'enviado' ? `<button class="btn sm" style="background:#d97706;color:#fff;margin-left:4px" data-oid="${o.id}" data-act="sol_tomar">Tomar</button>` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+
+        tbl.querySelectorAll('[data-act="sol_ver"]').forEach(b => {
+          b.onclick = () => openOrderDetail(+b.dataset.oid, 'solicitudes');
+        });
+        tbl.querySelectorAll('[data-act="sol_gestionar"]').forEach(b => {
+          b.onclick = () => vPedidos('gestion', +b.dataset.vid);
+        });
+        tbl.querySelectorAll('[data-act="sol_tomar"]').forEach(b => {
+          b.onclick = async () => {
+            if (!confirm('¿Tomar este pedido para revisión?')) return;
+            try {
+              await api('/api/orders/' + b.dataset.oid + '/process', { method: 'POST', body: { action: 'tomar' } });
+              toast('Pedido tomado. Estado cambiado a "En Revisión".');
+              loadSolicitudes();
+            } catch(e) { toast(e.message, 1); }
+          };
+        });
+      } catch(e) {
+        $('#sol_tbl').innerHTML = `<p style="color:var(--err)">Error: ${esc(e.message)}</p>`;
+      }
+    }
+
+    $('#pf_btn').onclick = loadSolicitudes;
+    $('#pf_clr').onclick = () => { $('#pf_status').value = ''; loadSolicitudes(); };
+    loadSolicitudes();
+  }
+
+  // ========== TAB 2: GESTIÓN DE PEDIDOS (solo administradores) ==========
+  else if (tab === 'gestion') {
+    body.innerHTML = `
+      <div class="card" style="padding:16px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+          <div class="fld" style="margin:0;min-width:280px">
+            <label style="font-size:12px;font-weight:600;color:var(--mut);display:block;margin-bottom:4px">Seleccionar Visitador con pedidos activos:</label>
+            <select id="g_vis" style="padding:8px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-size:14px;width:100%">
+              <option value="">— Seleccione un visitador —</option>
+            </select>
+          </div>
+          <button class="btn sec sm" id="g_refresh_vis" style="margin-top:18px">🔄 Actualizar</button>
+        </div>
+        <div id="g_orders">
+          <p style="color:var(--mut);font-size:14px;padding:20px;text-align:center;border:1px dashed var(--bd);border-radius:8px">
+            👈 Seleccione un visitador en el desplegable superior para gestionar sus pedidos activos, aprobar cantidades y procesar las entregas.
+          </p>
+        </div>
+      </div>
+    `;
+
+    async function loadVisitadoresDropdown() {
+      try {
+        const visitadores = await api('/api/orders/visitadores');
+        const sel = $('#g_vis');
+        sel.innerHTML = '<option value="">— Seleccione un visitador —</option>';
+        visitadores.forEach(v => {
+          const op = document.createElement('option');
+          op.value = v.id;
+          const activos = +v.pedidos_activos || 0;
+          op.textContent = `${v.nombre || v.email} (${activos} ${activos === 1 ? 'pedido activo' : 'pedidos activos'})`;
+          if (selectedVisitadorId && +v.id === +selectedVisitadorId) {
+            op.selected = true;
+          }
+          sel.appendChild(op);
+        });
+        if (selectedVisitadorId) {
+          sel.dispatchEvent(new Event('change'));
+        }
+      } catch(e) {
+        toast('Error al cargar lista de visitadores: ' + e.message, 1);
+      }
+    }
+
+    $('#g_refresh_vis').onclick = loadVisitadoresDropdown;
+
+    $('#g_vis').onchange = async function() {
+      const vid = this.value;
+      const gord = $('#g_orders');
+      if (!vid) {
+        gord.innerHTML = '<p style="color:var(--mut);font-size:14px;padding:20px;text-align:center;border:1px dashed var(--bd);border-radius:8px">👈 Seleccione un visitador para ver sus pedidos.</p>';
+        return;
+      }
+      gord.innerHTML = '<p style="color:var(--mut);text-align:center;padding:20px">Cargando pedidos del visitador…</p>';
+      try {
+        const orders = await api('/api/orders?visitador_id=' + vid);
+        // Filtrar pedidos activos (o permitir ver todos si se desea)
+        const activos = orders.filter(o => !['listo','rechazado'].includes(o.status));
+        if (!activos.length) {
+          gord.innerHTML = `
+            <div style="text-align:center;padding:30px;color:var(--mut)">
+              <div style="font-size:32px;margin-bottom:8px">✅</div>
+              <strong>Este visitador no tiene pedidos activos pendientes de procesar.</strong>
+              <p style="font-size:13px;margin-top:6px">Todos sus pedidos ya fueron marcados como listos o rechazados.</p>
+            </div>
+          `;
+          return;
+        }
+
+        gord.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:18px">
+            ${activos.map(o => `
+              <div class="card" style="border:1px solid var(--bd);padding:16px;border-radius:10px;background:var(--bg)" id="gcard_${o.id}">
+                <!-- CABECERA DEL PEDIDO -->
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;border-bottom:1px solid var(--bd);padding-bottom:10px">
+                  <div>
+                    <h3 style="margin:0;font-size:16px;display:inline-flex;align-items:center;gap:8px">
+                      <span>📦 Pedido #${o.id}</span>
+                      ${orderStatusBadge(o.status)}
+                      ${o.pending_edit ? '<span style="font-size:11px;background:rgba(245,158,11,.15);color:#d97706;padding:2px 8px;border-radius:10px;font-weight:600">⚠ Edición pendiente de aprobación</span>' : ''}
+                    </h3>
+                    <div style="font-size:13px;color:var(--mut);margin-top:4px">
+                      Médico: <strong>${esc(o.medico)}</strong>
+                    </div>
+                  </div>
+                  <div style="font-size:12px;color:var(--mut);text-align:right">
+                    <div>Solicitado: <strong>${fmtDate(o.fecha_solicitud)}</strong></div>
+                    <div>Fecha Entrega: <strong>${fmtDate(o.fecha_entrega)}</strong></div>
+                  </div>
+                </div>
+
+                ${o.notas ? `<div style="font-size:13px;padding:8px 12px;background:var(--bg2);border-radius:6px;margin-bottom:12px"><strong>Observaciones del visitador:</strong> ${esc(o.notas)}</div>` : ''}
+
+                <!-- LISTA DE PRODUCTOS O MUESTRAS -->
+                <div style="margin-bottom:14px">
+                  <strong style="font-size:13px;color:var(--mut);display:block;margin-bottom:8px">Lista de Productos y Muestras del Pedido:</strong>
+                  <div class="scroll">
+                    <table style="font-size:13px" id="gtbl_${o.id}">
+                      <thead>
+                        <tr>
+                          <th>Tipo</th>
+                          <th>Producto / Muestra</th>
+                          <th style="text-align:center">Cant. Solicitada</th>
+                          <th style="width:140px">Cant. Aprobada / Asignada</th>
+                          <th style="text-align:center;width:90px">¿Rechazar?</th>
+                          <th>Motivo de Rechazo (si aplica)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${(o.items || []).map(it => `
+                          <tr id="git_row_${it.id}" style="${it.rechazado ? 'background:rgba(239,68,68,.06)' : ''}">
+                            <td>
+                              <span style="font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;background:${it.tipo==='muestra'?'rgba(15,157,138,.12)':'rgba(59,130,246,.12)'};color:${it.tipo==='muestra'?'var(--ac)':'#2563eb'}">${it.tipo.toUpperCase()}</span>
+                            </td>
+                            <td><strong>${esc(it.nombre)}</strong></td>
+                            <td style="text-align:center;font-weight:600">${it.cantidad_solicitada}</td>
+                            <td>
+                              <input type="number" min="0" value="${it.cantidad_aprobada !== null && it.cantidad_aprobada !== undefined ? it.cantidad_aprobada : it.cantidad_solicitada}" data-iid="${it.id}" data-f="cant_ap" style="width:90px;padding:5px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-weight:600">
+                            </td>
+                            <td style="text-align:center">
+                              <input type="checkbox" data-iid="${it.id}" data-f="rech" ${it.rechazado ? 'checked' : ''} style="cursor:pointer;width:18px;height:18px">
+                            </td>
+                            <td>
+                              <input type="text" placeholder="Ej: Sin inventario, no disponible…" value="${esc(it.razon_rechazo || '')}" data-iid="${it.id}" data-f="razon" style="width:100%;min-width:160px;padding:5px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx)">
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- NOTAS Y BOTONES DE ACCIÓN DEL ADMINISTRADOR -->
+                <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:12px">
+                  <label class="fld" style="margin-bottom:12px">
+                    <span style="font-size:12px;font-weight:600;color:var(--mut)">Observaciones del Administrador / Planta:</span>
+                    <textarea id="g_admin_notas_${o.id}" rows="2" placeholder="Observaciones generales sobre este pedido…">${esc(o.admin_notas || '')}</textarea>
+                  </label>
+                  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      ${o.status === 'enviado' ? `
+                        <button class="btn sm" data-oid="${o.id}" data-act="g_tomar" style="background:#d97706;color:#fff">📥 Tomar en Revisión</button>
+                      ` : ''}
+                      <button class="btn sm" data-oid="${o.id}" data-act="g_aprobar" style="background:var(--ac);color:var(--acx)">👍 Aprobar Cantidades</button>
+                      <button class="btn sm" data-oid="${o.id}" data-act="g_listo" style="background:#7c3aed;color:#fff">✅ Marcar Pedido Listo (Listo para retiro)</button>
+                    </div>
+                    <button class="btn sm dg" data-oid="${o.id}" data-act="g_rechazar">🚫 Negar Pedido Completo</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        // Eventos de checkboxes para cambiar color de fila
+        gord.querySelectorAll('[data-f="rech"]').forEach(chk => {
+          chk.onchange = () => {
+            const row = $(`#git_row_${chk.dataset.iid}`);
+            if (row) {
+              row.style.background = chk.checked ? 'rgba(239,68,68,.06)' : '';
+            }
+          };
+        });
+
+        // Eventos de botones de acción para cada pedido
+        gord.querySelectorAll('[data-act^="g_"]').forEach(b => {
+          b.onclick = async () => {
+            const oid = +b.dataset.oid;
+            const act = b.dataset.act;
+
+            // Extraer items del formulario del pedido
+            const getOrderItemsPayload = (orderId) => {
+              const rows = document.querySelectorAll(`#gtbl_${orderId} [data-iid]`);
+              const map = {};
+              rows.forEach(inp => {
+                const iid = inp.dataset.iid;
+                if (!map[iid]) map[iid] = { id: +iid };
+                if (inp.dataset.f === 'cant_ap') map[iid].cantidad_aprobada = +inp.value || 0;
+                if (inp.dataset.f === 'rech') map[iid].rechazado = inp.checked;
+                if (inp.dataset.f === 'razon') map[iid].razon_rechazo = inp.value.trim() || null;
+              });
+              return Object.values(map);
+            };
+
+            const adminNotas = ($(`#g_admin_notas_${oid}`)?.value || '').trim() || null;
+
+            if (act === 'g_tomar') {
+              try {
+                await api(`/api/orders/${oid}/process`, { method: 'POST', body: { action: 'tomar' } });
+                toast('Pedido tomado en revisión por administración.');
+                $('#g_vis').dispatchEvent(new Event('change'));
+              } catch(e) { toast(e.message, 1); }
+            } else if (act === 'g_aprobar') {
+              const items = getOrderItemsPayload(oid);
+              try {
+                await api(`/api/orders/${oid}/process`, {
+                  method: 'POST',
+                  body: { action: 'aprobar', admin_notas: adminNotas, items }
+                });
+                toast('Pedido y cantidades aprobadas correctamente. 👍');
+                $('#g_vis').dispatchEvent(new Event('change'));
+              } catch(e) { toast(e.message, 1); }
+            } else if (act === 'g_listo') {
+              const items = getOrderItemsPayload(oid);
+              try {
+                await api(`/api/orders/${oid}/process`, {
+                  method: 'POST',
+                  body: { action: 'listo', admin_notas: adminNotas, items }
+                });
+                toast('¡Pedido marcado como LISTO para su entrega! ✅');
+                $('#g_vis').dispatchEvent(new Event('change'));
+              } catch(e) { toast(e.message, 1); }
+            } else if (act === 'g_rechazar') {
+              const motivo = prompt('Indique el motivo u observación del rechazo total del pedido (requerido):');
+              if (!motivo || !motivo.trim()) {
+                toast('Debe ingresar un motivo para rechazar el pedido.', 1);
+                return;
+              }
+              if (!confirm('¿Está seguro de negar y rechazar este pedido en su totalidad?')) return;
+              try {
+                await api(`/api/orders/${oid}/process`, {
+                  method: 'POST',
+                  body: { action: 'rechazar', admin_notas: motivo.trim() }
+                });
+                toast('Pedido rechazado en totalidad.');
+                $('#g_vis').dispatchEvent(new Event('change'));
+              } catch(e) { toast(e.message, 1); }
+            }
+          };
+        });
+
+      } catch(e) {
+        gord.innerHTML = `<p style="color:var(--err);padding:20px">Error al cargar pedidos: ${esc(e.message)}</p>`;
+      }
+    };
+
+    loadVisitadoresDropdown();
+  }
+
+  // ========== TAB 3: PEDIDOS (administradores y visitadores) ==========
+  else if (tab === 'pedidos') {
+    let usersForFilter = [];
+    if (me.admin) {
+      try { usersForFilter = await api('/api/users'); } catch(e) {}
+    }
+
+    let medicosList = [];
+    try {
+      medicosList = await api('/api/orders/medicos');
+    } catch(e) {}
+
+    body.innerHTML = `
+      <!-- FORMULARIO NUEVA SOLICITUD DE PEDIDO -->
+      <div class="card" style="padding:16px;margin-bottom:16px" id="pf_card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;border-bottom:1px solid var(--bd);padding-bottom:8px">
+          <h3 style="margin:0;font-size:16px;display:flex;align-items:center;gap:6px">
+            <span>➕ Nueva Solicitud de Pedido</span>
+          </h3>
+          <button class="btn sec sm" id="pf_toggle">Ocultar formulario</button>
+        </div>
+
+        <div id="pf_form_wrap">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:12px">
+            <label class="fld">
+              <span>Médico / Destinatario * (${medicosList.length} registrados)</span>
+              <select id="pf_medico_sel" style="width:100%;padding:7px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:13px" required>
+                <option value="">— Seleccione médico registrado —</option>
+                ${medicosList.map(m => {
+                  const sub = [m.institucion, m.especialidad].filter(Boolean).join(' · ');
+                  const visInfo = me.admin ? ` — 👤 Visitador: ${esc(m.visitador_nombre || m.visitador_email)}` : '';
+                  return `<option value="${esc(m.medico)}" data-vid="${m.visitador_id}" data-vnom="${esc(m.visitador_nombre || m.visitador_email)}">${esc(m.medico)}${sub ? ' (' + esc(sub) + ')' : ''}${visInfo}</option>`;
+                }).join('')}
+                <option value="__manual__">➕ Escribir otro médico no registrado…</option>
+              </select>
+              <input id="pf_medico_manual" placeholder="Escriba el nombre completo del médico" style="display:none;margin-top:6px">
+              <div id="pf_admin_vis_notice" style="display:none;margin-top:6px;font-size:12px;color:var(--ac);font-weight:600;padding:6px 10px;background:rgba(15,157,138,.1);border-radius:6px;border:1px solid rgba(15,157,138,.25)"></div>
+            </label>
+            <label class="fld">
+              <span>Fecha de Solicitud *</span>
+              <input type="date" id="pf_fecha_sol" value="${new Date().toISOString().split('T')[0]}" required>
+            </label>
+            <label class="fld">
+              <span>Fecha Estimada de Entrega</span>
+              <input type="date" id="pf_fecha_ent">
+            </label>
+          </div>
+
+          <label class="fld" style="margin-bottom:14px">
+            <span>Observaciones / Notas adicionales</span>
+            <textarea id="pf_notas" rows="2" placeholder="Indicaciones para planta o empaque…"></textarea>
+          </label>
+
+          <!-- SECCIÓN DE PRODUCTOS O MUESTRAS DEL PEDIDO -->
+          <div style="background:var(--bg2);padding:14px;border-radius:8px;border:1px solid var(--bd);margin-bottom:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div>
+                <strong style="font-size:14px">Productos o Muestras a Solicitar</strong>
+                <span style="font-size:12px;color:var(--mut);display:block">Seleccione los elementos ya registrados en el catálogo del sistema</span>
+              </div>
+              <button type="button" class="btn sm" id="pf_add_item" style="background:var(--ac);color:var(--acx)">+ Agregar producto/muestra</button>
+            </div>
+            <div id="pf_items_list"></div>
+          </div>
+
+          <button class="btn" id="pf_submit" style="padding:8px 24px;font-size:14px">
+            📤 Enviar Pedido a Planta
+          </button>
+        </div>
+      </div>
+
+      <!-- TABLA DE PEDIDOS -->
+      <div class="card" style="padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <h3 style="margin:0;font-size:16px">
+            ${me.admin ? '📋 Historial de Todos los Pedidos' : '📋 Mis Pedidos Registrados'}
+          </h3>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            ${me.admin ? `
+              <select id="pt_vis" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-size:13px">
+                <option value="">Todos los visitadores</option>
+                ${usersForFilter.map(u => `<option value="${u.id}">${esc(u.nombre || u.email)}</option>`).join('')}
+              </select>
+            ` : ''}
+            <select id="pt_status" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-size:13px">
+              <option value="">Todos los estados</option>
+              <option value="enviado">Enviado a Planta</option>
+              <option value="revision">En Revisión</option>
+              <option value="aprobado">Aprobado</option>
+              <option value="listo">Pedido Listo</option>
+              <option value="rechazado">Rechazado</option>
+            </select>
+            <button class="btn sm" id="pt_filtrar">Filtrar</button>
+            <button class="btn sec sm" id="pt_limpiar">Limpiar</button>
+          </div>
+        </div>
+
+        <div id="ped_tbl" class="scroll"><div style="text-align:center;padding:30px;color:var(--mut)">Cargando pedidos…</div></div>
+      </div>
+    `;
+
+    // Manejo de selección de médico en el formulario
+    const selMedico = $('#pf_medico_sel');
+    const manMedico = $('#pf_medico_manual');
+    const visNotice = $('#pf_admin_vis_notice');
+
+    selMedico.onchange = () => {
+      const val = selMedico.value;
+      if (val === '__manual__') {
+        manMedico.style.display = 'block';
+        manMedico.focus();
+        if (visNotice) visNotice.style.display = 'none';
+      } else {
+        manMedico.style.display = 'none';
+        if (me.admin && visNotice) {
+          const opt = selMedico.options[selMedico.selectedIndex];
+          const vnom = opt ? opt.dataset.vnom : '';
+          if (vnom && val) {
+            visNotice.style.display = 'block';
+            visNotice.innerHTML = `👤 Este pedido se registrará a nombre del visitador: <strong>${vnom}</strong>`;
+          } else {
+            visNotice.style.display = 'none';
+          }
+        }
+      }
+    };
+
+    // Lista interactiva de items en el formulario
+    let pedItems = [
+      { tipo: 'muestra', catalogo_id: null, nombre: '', cantidad_solicitada: 1 }
+    ];
+
+    function renderPfItems() {
+      const list = $('#pf_items_list');
+      if (!pedItems.length) {
+        list.innerHTML = '<p style="color:var(--mut);font-size:13px;margin:8px 0">No hay productos ni muestras agregadas. Haga clic en "+ Agregar producto/muestra".</p>';
+        return;
+      }
+      list.innerHTML = pedItems.map((it, i) => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;background:var(--bg);padding:8px 10px;border-radius:6px;border:1px solid var(--bd)">
+          <div style="width:120px">
+            <select data-pi="${i}" data-f="tipo" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-size:13px;font-weight:600">
+              <option value="muestra" ${it.tipo==='muestra'?'selected':''}>Muestra</option>
+              <option value="producto" ${it.tipo==='producto'?'selected':''}>Producto</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:240px">
+            <select data-pi="${i}" data-f="cat" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-size:13px">
+              ${getCatalogOptionsHtml(it.tipo, it.catalogo_id, it.nombre)}
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:12px;color:var(--mut)">Cant:</span>
+            <input type="number" min="1" max="9999" data-pi="${i}" data-f="cant" value="${it.cantidad_solicitada || 1}" style="width:70px;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg2);color:var(--tx);font-size:13px;text-align:center;font-weight:600">
+          </div>
+          <button type="button" class="btn dg sm" data-pidel="${i}" title="Eliminar ítem" style="padding:4px 8px">✕</button>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('[data-pi]').forEach(el => {
+        el.onchange = () => {
+          const i = +el.dataset.pi;
+          const f = el.dataset.f;
+          if (f === 'tipo') {
+            pedItems[i].tipo = el.value;
+            pedItems[i].catalogo_id = null;
+            pedItems[i].nombre = '';
+            renderPfItems();
+          } else if (f === 'cat') {
+            const selOpt = el.options[el.selectedIndex];
+            pedItems[i].catalogo_id = el.value ? +el.value : null;
+            pedItems[i].nombre = selOpt ? selOpt.dataset.nombre || '' : '';
+          } else if (f === 'cant') {
+            pedItems[i].cantidad_solicitada = Math.max(1, +el.value || 1);
+          }
+        };
+      });
+
+      list.querySelectorAll('[data-pidel]').forEach(b => {
+        b.onclick = () => {
+          pedItems.splice(+b.dataset.pidel, 1);
+          renderPfItems();
+        };
+      });
+    }
+
+    renderPfItems();
+
+    $('#pf_add_item').onclick = () => {
+      pedItems.push({ tipo: 'muestra', catalogo_id: null, nombre: '', cantidad_solicitada: 1 });
+      renderPfItems();
+    };
+
+    // Toggle formulario
+    let pfVisible = true;
+    $('#pf_toggle').onclick = () => {
+      pfVisible = !pfVisible;
+      $('#pf_form_wrap').style.display = pfVisible ? '' : 'none';
+      $('#pf_toggle').textContent = pfVisible ? 'Ocultar formulario' : 'Mostrar formulario';
+    };
+
+    // Enviar pedido
+    $('#pf_submit').onclick = async () => {
+      let medico = selMedico.value;
+      let targetVisitadorId = null;
+
+      if (medico === '__manual__') {
+        medico = manMedico.value.trim();
+      } else if (medico) {
+        const opt = selMedico.options[selMedico.selectedIndex];
+        if (opt && opt.dataset.vid) {
+          targetVisitadorId = +opt.dataset.vid;
+        }
+      }
+
+      if (!medico) { toast('Debe seleccionar o ingresar el nombre del médico.', 1); return; }
+      if (!pedItems.length) { toast('Agregue al menos un producto o muestra al pedido.', 1); return; }
+      const unselected = pedItems.find(it => !it.nombre || !it.nombre.trim());
+      if (unselected) {
+        toast('Debe seleccionar el producto o muestra en cada una de las filas agregadas.', 1);
+        return;
+      }
+      try {
+        const ord = await api('/api/orders', {
+          method: 'POST',
+          body: {
+            medico,
+            visitador_id: targetVisitadorId,
+            fecha_solicitud: $('#pf_fecha_sol').value || null,
+            fecha_entrega: $('#pf_fecha_ent').value || null,
+            notas: $('#pf_notas').value.trim() || null,
+            items: pedItems.map(it => ({
+              catalogo_id: it.catalogo_id || null,
+              nombre: it.nombre.trim(),
+              tipo: it.tipo,
+              cantidad_solicitada: it.cantidad_solicitada || 1
+            }))
+          }
+        });
+        toast('✅ Pedido enviado a planta con éxito. #' + ord.id);
+        selMedico.value = '';
+        selMedico.dispatchEvent(new Event('change'));
+        manMedico.value = '';
+        $('#pf_fecha_sol').value = new Date().toISOString().split('T')[0];
+        $('#pf_fecha_ent').value = '';
+        $('#pf_notas').value = '';
+        pedItems = [{ tipo: 'muestra', catalogo_id: null, nombre: '', cantidad_solicitada: 1 }];
+        renderPfItems();
+        loadPedidos();
+      } catch(e) {
+        toast(e.message, 1);
+      }
+    };
+
+    // Cargar tabla de pedidos
+    async function loadPedidos() {
+      const st = $('#pt_status').value;
+      const vid = me.admin ? ($('#pt_vis')?.value || '') : '';
+      let qs = [];
+      if (st) qs.push('status=' + st);
+      if (vid) qs.push('visitador_id=' + vid);
+      const url = '/api/orders' + (qs.length ? '?' + qs.join('&') : '');
+
+      try {
+        const rows = await api(url);
+        const tbl = $('#ped_tbl');
+        if (!rows.length) {
+          tbl.innerHTML = '<p style="color:var(--mut);text-align:center;padding:24px">No hay pedidos registrados.</p>';
+          return;
+        }
+
+        tbl.innerHTML = `<table>
+          <thead>
+            <tr>
+              <th>Fecha Solicitud</th>
+              ${me.admin ? '<th>Visitador</th>' : ''}
+              <th>Médico / Destinatario</th>
+              <th>Producto o Muestra</th>
+              <th style="text-align:center">Total Cant.</th>
+              <th>Fecha Entrega</th>
+              <th>Estatus</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(o => {
+              const isOwner = o.visitador_id === me.id;
+              const canDirectEdit = me.admin || (isOwner && o.status === 'enviado');
+              const canRequestEdit = !me.admin && isOwner && (o.status !== 'enviado');
+              const canDel = me.admin || (isOwner && o.status === 'enviado');
+
+              return `<tr>
+                <td style="white-space:nowrap">${fmtDate(o.fecha_solicitud)}</td>
+                ${me.admin ? `<td><strong>${esc(o.visitador_nombre || o.visitador_email)}</strong></td>` : ''}
+                <td>
+                  ${esc(o.medico)}
+                  ${o.pending_edit ? '<span title="Edición pendiente de aprobación por el administrador" style="margin-left:4px;font-size:12px;color:#d97706">⚠</span>' : ''}
+                </td>
+                <td>${renderItemsListHtml(o.items)}</td>
+                <td style="text-align:center"><span class="badge" style="font-size:12px">${calcTotalQty(o.items)}</span></td>
+                <td style="white-space:nowrap">${fmtDate(o.fecha_entrega)}</td>
+                <td>${orderStatusBadge(o.status)}</td>
+                <td style="white-space:nowrap">
+                  <button class="btn sm" data-oid="${o.id}" data-act="pver">Ver</button>
+                  ${canDirectEdit ? `<button class="btn sm sec" data-oid="${o.id}" data-act="pedit" style="margin-left:4px">Editar</button>` : ''}
+                  ${canRequestEdit ? `<button class="btn sm sec" data-oid="${o.id}" data-act="pedit_req" style="margin-left:4px" title="Modificar solicitud (requiere aprobación)">✏️ Solicitar Cambio</button>` : ''}
+                  ${canDel ? `<button class="btn sm dg" data-oid="${o.id}" data-act="pdel" style="margin-left:4px">Eliminar</button>` : ''}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+
+        tbl.querySelectorAll('[data-act="pver"]').forEach(b => {
+          b.onclick = () => openOrderDetail(+b.dataset.oid, 'pedidos');
+        });
+        tbl.querySelectorAll('[data-act="pedit"]').forEach(b => {
+          b.onclick = () => openOrderEdit(+b.dataset.oid, false);
+        });
+        tbl.querySelectorAll('[data-act="pedit_req"]').forEach(b => {
+          b.onclick = () => openOrderEdit(+b.dataset.oid, true);
+        });
+        tbl.querySelectorAll('[data-act="pdel"]').forEach(b => {
+          b.onclick = async () => {
+            if (!confirm('¿Está seguro de eliminar este pedido?')) return;
+            try {
+              await api('/api/orders/' + b.dataset.oid, { method: 'DELETE' });
+              toast('Pedido eliminado.');
+              loadPedidos();
+            } catch(e) { toast(e.message, 1); }
+          };
+        });
+
+      } catch(e) {
+        $('#ped_tbl').innerHTML = `<p style="color:var(--err)">Error al cargar pedidos: ${esc(e.message)}</p>`;
+      }
+    }
+
+    $('#pt_filtrar').onclick = loadPedidos;
+    $('#pt_limpiar').onclick = () => {
+      $('#pt_status').value = '';
+      if ($('#pt_vis')) $('#pt_vis').value = '';
+      loadPedidos();
+    };
+    loadPedidos();
+
+    // Modal para ver detalle de pedido
+    async function openOrderDetail(oid, fromTab) {
+      const modal = $('#p_modal');
+      const inner = $('#p_modal_inner');
+      inner.innerHTML = '<div style="padding:30px;text-align:center;color:var(--mut)">Cargando detalle del pedido…</div>';
+      modal.style.display = 'flex';
+      modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+
+      try {
+        const o = await api('/api/orders/' + oid);
+        const visName = o.visitador_nombre || o.visitador_email;
+
+        inner.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:12px">
+            <div>
+              <h2 style="margin:0;font-size:18px;display:flex;align-items:center;gap:8px">
+                <span>📦 Pedido #${o.id}</span>
+                ${orderStatusBadge(o.status)}
+              </h2>
+              <div style="font-size:13px;color:var(--mut);margin-top:4px">
+                Visitador: <strong>${esc(visName)}</strong>
+              </div>
+            </div>
+            <button class="btn sec sm" id="p_modal_close">✕ Cerrar</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;font-size:13px;background:var(--bg2);padding:12px;border-radius:8px">
+            <div><span style="color:var(--mut);font-size:11px;display:block">MÉDICO / DESTINATARIO</span><strong>${esc(o.medico)}</strong></div>
+            <div><span style="color:var(--mut);font-size:11px;display:block">FECHA SOLICITUD</span><strong>${fmtDate(o.fecha_solicitud)}</strong></div>
+            <div><span style="color:var(--mut);font-size:11px;display:block">FECHA ENTREGA</span><strong>${fmtDate(o.fecha_entrega)}</strong></div>
+            ${o.admin_nombre ? `<div><span style="color:var(--mut);font-size:11px;display:block">PROCESADO POR</span><strong>${esc(o.admin_nombre)}</strong></div>` : ''}
+          </div>
+
+          ${o.notas ? `<div style="margin-bottom:12px;padding:10px;background:var(--bg2);border-radius:6px;font-size:13px"><strong>Notas del visitador:</strong> ${esc(o.notas)}</div>` : ''}
+          ${o.admin_notas ? `<div style="margin-bottom:14px;padding:10px;background:rgba(245,158,11,.1);border-radius:6px;font-size:13px;border-left:3px solid #f59e0b;color:#d97706"><strong>Observaciones de Administración / Planta:</strong> ${esc(o.admin_notas)}</div>` : ''}
+
+          <h4 style="margin:16px 0 8px;font-size:14px">Lista de Muestras y Productos:</h4>
+          <div class="scroll" style="margin-bottom:16px">
+            <table style="font-size:13px">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Producto / Muestra</th>
+                  <th style="text-align:center">Cant. Solicitada</th>
+                  <th style="text-align:center">Cant. Aprobada</th>
+                  <th>Estado del Ítem</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(o.items || []).map(it => `
+                  <tr>
+                    <td>
+                      <span style="font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;background:${it.tipo==='muestra'?'rgba(15,157,138,.12)':'rgba(59,130,246,.12)'};color:${it.tipo==='muestra'?'var(--ac)':'#2563eb'}">${it.tipo.toUpperCase()}</span>
+                    </td>
+                    <td><strong>${esc(it.nombre)}</strong></td>
+                    <td style="text-align:center;font-weight:600">${it.cantidad_solicitada}</td>
+                    <td style="text-align:center;font-weight:600">${it.cantidad_aprobada !== null && it.cantidad_aprobada !== undefined ? it.cantidad_aprobada : '—'}</td>
+                    <td>
+                      ${it.rechazado
+                        ? `<span style="color:#ef4444;font-size:12px">❌ Rechazado${it.razon_rechazo ? ': <em>' + esc(it.razon_rechazo) + '</em>' : ''}</span>`
+                        : it.cantidad_aprobada !== null && it.cantidad_aprobada !== undefined
+                          ? `<span style="color:#10b981;font-size:12px">✅ Aprobado (${it.cantidad_aprobada} asignadas)</span>`
+                          : '<span style="color:var(--mut);font-size:12px">Pendiente de revisión</span>'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          ${me.admin ? `
+            <div style="border-top:1px solid var(--bd);padding-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn sm" id="mdl_gestionar" style="background:var(--ac);color:var(--acx)">⚙️ Ir a Gestión de este Pedido</button>
+            </div>
+          ` : ''}
+        `;
+
+        $('#p_modal_close').onclick = () => modal.style.display = 'none';
+
+        if (me.admin && $('#mdl_gestionar')) {
+          $('#mdl_gestionar').onclick = () => {
+            modal.style.display = 'none';
+            vPedidos('gestion', o.visitador_id);
+          };
+        }
+
+      } catch(e) {
+        inner.innerHTML = `<div style="padding:20px;color:var(--err)">Error al cargar detalle: ${esc(e.message)}</div>`;
+      }
+    }
+
+    // Modal para editar pedido
+    async function openOrderEdit(oid, isPendingNotice) {
+      const modal = $('#p_modal');
+      const inner = $('#p_modal_inner');
+      inner.innerHTML = '<div style="padding:30px;text-align:center;color:var(--mut)">Cargando pedido para edición…</div>';
+      modal.style.display = 'flex';
+      modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+
+      try {
+        const o = await api('/api/orders/' + oid);
+        let medListEdit = [];
+        try { medListEdit = await api('/api/orders/medicos'); } catch(e) {}
+        let editItems = (o.items || []).map(it => ({
+          id: it.id,
+          tipo: it.tipo || 'muestra',
+          catalogo_id: it.catalogo_id || null,
+          nombre: it.nombre || '',
+          cantidad_solicitada: it.cantidad_solicitada || 1
+        }));
+
+        const renderEditItems = () => {
+          const eli = $('#ped_edit_items');
+          if (!eli) return;
+          if (!editItems.length) {
+            eli.innerHTML = '<p style="color:var(--mut);font-size:13px">Sin ítems. Agregue al menos uno.</p>';
+            return;
+          }
+          eli.innerHTML = editItems.map((it, i) => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;background:var(--bg2);padding:8px;border-radius:6px;border:1px solid var(--bd)">
+              <div style="width:110px">
+                <select data-ei="${i}" data-f="tipo" style="width:100%;padding:5px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:13px;font-weight:600">
+                  <option value="muestra" ${it.tipo==='muestra'?'selected':''}>Muestra</option>
+                  <option value="producto" ${it.tipo==='producto'?'selected':''}>Producto</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:200px">
+                <select data-ei="${i}" data-f="cat" style="width:100%;padding:5px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:13px">
+                  ${getCatalogOptionsHtml(it.tipo, it.catalogo_id, it.nombre)}
+                </select>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <span style="font-size:12px;color:var(--mut)">Cant:</span>
+                <input type="number" min="1" max="9999" data-ei="${i}" data-f="cant" value="${it.cantidad_solicitada || 1}" style="width:65px;padding:5px 6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:13px;text-align:center;font-weight:600">
+              </div>
+              <button type="button" class="btn dg sm" data-eidel="${i}">✕</button>
+            </div>
+          `).join('');
+
+          eli.querySelectorAll('[data-ei]').forEach(el => {
+            el.onchange = () => {
+              const i = +el.dataset.ei;
+              const f = el.dataset.f;
+              if (f === 'tipo') {
+                editItems[i].tipo = el.value;
+                editItems[i].catalogo_id = null;
+                editItems[i].nombre = '';
+                renderEditItems();
+              } else if (f === 'cat') {
+                const selOpt = el.options[el.selectedIndex];
+                editItems[i].catalogo_id = el.value ? +el.value : null;
+                editItems[i].nombre = selOpt ? selOpt.dataset.nombre || '' : '';
+              } else if (f === 'cant') {
+                editItems[i].cantidad_solicitada = Math.max(1, +el.value || 1);
+              }
+            };
+          });
+
+          eli.querySelectorAll('[data-eidel]').forEach(b => {
+            b.onclick = () => {
+              editItems.splice(+b.dataset.eidel, 1);
+              renderEditItems();
+            };
+          });
+        };
+
+        inner.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1px solid var(--bd);padding-bottom:10px">
+            <h2 style="margin:0;font-size:18px">✏️ Editar Pedido #${o.id}</h2>
+            <button class="btn sec sm" id="pe_close">✕ Cerrar</button>
+          </div>
+
+          ${isPendingNotice ? `
+            <div style="padding:10px 14px;background:rgba(245,158,11,.12);border-radius:8px;border-left:3px solid #f59e0b;font-size:13px;margin-bottom:14px;color:#d97706">
+              ⚠ <strong>Nota:</strong> Este pedido ya fue tomado por el administrador. Las modificaciones que guardes quedarán marcadas como <em>pendientes de aprobación</em> por parte de la administración.
+            </div>
+          ` : ''}
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px">
+            <label class="fld">
+              <span>Médico / Destinatario *</span>
+              <input id="pe_medico" list="dl_pe_medicos" value="${esc(o.medico)}" required>
+              <datalist id="dl_pe_medicos">
+                ${medListEdit.map(m => `<option value="${esc(m.medico)}">${esc(m.medico)}${m.institucion ? ' (' + esc(m.institucion) + ')' : ''}${me.admin ? ' — 👤 ' + esc(m.visitador_nombre || m.visitador_email) : ''}</option>`).join('')}
+              </datalist>
+            </label>
+            <label class="fld">
+              <span>Fecha Solicitud</span>
+              <input type="date" id="pe_fecha_sol" value="${o.fecha_solicitud ? o.fecha_solicitud.split('T')[0] : ''}">
+            </label>
+            <label class="fld">
+              <span>Fecha Entrega</span>
+              <input type="date" id="pe_fecha_ent" value="${o.fecha_entrega ? o.fecha_entrega.split('T')[0] : ''}">
+            </label>
+          </div>
+
+          <label class="fld" style="margin-bottom:12px">
+            <span>Notas del Pedido</span>
+            <textarea id="pe_notas" rows="2">${esc(o.notas || '')}</textarea>
+          </label>
+
+          ${me.admin ? `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px;background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--bd)">
+              <label class="fld" style="margin:0">
+                <span>Estatus del Pedido (Admin)</span>
+                <select id="pe_status" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx)">
+                  <option value="enviado" ${o.status==='enviado'?'selected':''}>Enviado a Planta</option>
+                  <option value="revision" ${o.status==='revision'?'selected':''}>En Revisión</option>
+                  <option value="aprobado" ${o.status==='aprobado'?'selected':''}>Aprobado</option>
+                  <option value="listo" ${o.status==='listo'?'selected':''}>Pedido Listo</option>
+                  <option value="rechazado" ${o.status==='rechazado'?'selected':''}>Rechazado</option>
+                </select>
+              </label>
+              <label class="fld" style="margin:0">
+                <span>Observaciones del Administrador</span>
+                <textarea id="pe_admin_notas" rows="2" placeholder="Observaciones…">${esc(o.admin_notas || '')}</textarea>
+              </label>
+            </div>
+          ` : ''}
+
+          <div style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <strong style="font-size:13px">Productos y Muestras Registradas:</strong>
+              <button type="button" class="btn sec sm" id="pe_add">+ Agregar ítem</button>
+            </div>
+            <div id="ped_edit_items"></div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--bd);padding-top:12px">
+            <button class="btn sec" id="pe_cancel">Cancelar</button>
+            <button class="btn" id="pe_save">💾 Guardar Cambios</button>
+          </div>
+        `;
+
+        renderEditItems();
+
+        $('#pe_close').onclick = $('#pe_cancel').onclick = () => modal.style.display = 'none';
+        $('#pe_add').onclick = () => {
+          editItems.push({ tipo: 'muestra', catalogo_id: null, nombre: '', cantidad_solicitada: 1 });
+          renderEditItems();
+        };
+
+        $('#pe_save').onclick = async () => {
+          const medico = $('#pe_medico').value.trim();
+          if (!medico) { toast('El médico es requerido.', 1); return; }
+          if (!editItems.length) { toast('Debe tener al menos un ítem.', 1); return; }
+          const unselected = editItems.find(it => !it.nombre || !it.nombre.trim());
+          if (unselected) {
+            toast('Todos los ítems deben tener un producto o muestra seleccionada.', 1);
+            return;
+          }
+
+          const body = {
+            medico,
+            fecha_solicitud: $('#pe_fecha_sol').value || null,
+            fecha_entrega: $('#pe_fecha_ent').value || null,
+            notas: $('#pe_notas').value.trim() || null,
+            items: editItems.map(it => ({
+              catalogo_id: it.catalogo_id || null,
+              nombre: it.nombre.trim(),
+              tipo: it.tipo,
+              cantidad_solicitada: it.cantidad_solicitada || 1
+            }))
+          };
+
+          if (me.admin) {
+            body.status = $('#pe_status').value;
+            body.admin_notas = $('#pe_admin_notas').value.trim() || null;
+          }
+
+          try {
+            const r = await api('/api/orders/' + oid, { method: 'PATCH', body });
+            if (r.pending) {
+              toast(r.msg);
+            } else {
+              toast('✅ Pedido actualizado correctamente.');
+            }
+            modal.style.display = 'none';
+            loadPedidos();
+          } catch(e) {
+            toast(e.message, 1);
+          }
+        };
+
+      } catch(e) {
+        inner.innerHTML = `<div style="padding:20px;color:var(--err)">Error: ${esc(e.message)}</div>`;
+      }
+    }
+  }
 }
 
 // ---------- Nueva visita ----------
@@ -936,6 +2553,202 @@ function fieldHtml([n, l, t, req]) {
   const editBtn = isProtectable ? `<button type="button" class="btn-edit-fld" data-target="${id}" title="Editar este campo">✏️ <span>Editar</span></button>` : '';
 
   return `<label class="fld ${t === 'area' ? 'full' : ''}" id="lbl_${n}"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><span>${l}${req ? ' *' : ''}</span>${editBtn}</div>${i}</label>`;
+}
+
+async function vAsignaciones(tab) {
+  if (!me.admin) tab = 'stock';
+  else if (!tab) tab = 'reporte';
+  const main = $('#main');
+
+  const tabs = me.admin
+    ? [['stock','📦 Stock'],['reporte','📊 Reporte de Inventario']]
+    : [['stock','📦 Stock']];
+
+  const tabsHtml = tabs.map(([t,l]) =>
+    `<button class="tab-btn${tab===t?' active':''}" data-t="${t}">${l}</button>`
+  ).join('');
+
+  main.innerHTML = `<h1>Asignaciones</h1><p style="color:var(--mut);margin-top:-8px">Inventario de muestras y productos</p>
+    <div class="tabs" style="margin-bottom:16px">${tabsHtml}</div>
+    <div id="asig_body"></div>`;
+
+  document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => vAsignaciones(b.dataset.t));
+  const body = $('#asig_body');
+
+  // ===== TAB: Mi Stock =====
+  if (tab === 'stock') {
+    body.innerHTML = '<p style="color:var(--mut)">Cargando...</p>';
+    let visitadorSel = '';
+    if (me.admin) {
+      const todosUsuarios = await api('/api/users');
+      const visitadores = todosUsuarios.filter(u => u.rol === 'visitador' && u.activo);
+      const opts = visitadores.map(v => `<option value="${v.id}">${esc(v.nombre || v.email)}</option>`).join('');
+      visitadorSel = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <label style="font-weight:600">Visitador:</label>
+        <select id="asig_vis_sel" style="padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg2);color:var(--tx)">
+          <option value="">— Mi cuenta —</option>${opts}
+        </select>
+      </div>`;
+    }
+    const renderStock = async (visitadorId) => {
+      const url = visitadorId ? `/api/inventory?visitador_id=${visitadorId}` : '/api/inventory';
+      const rows = await api(url);
+      const tblDiv = $('#asig_stock_tbl');
+      if (!rows.length) {
+        tblDiv.innerHTML = '<p style="color:var(--mut);padding:16px">Sin movimientos de inventario registrados aún.</p>';
+        return;
+      }
+      const muestras = rows.filter(r => r.tipo === 'muestra');
+      const productos = rows.filter(r => r.tipo === 'producto');
+      const tbl = (titulo, data) => !data.length ? '' : `
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin:0 0 10px">${titulo}</h3>
+          <div style="overflow-x:auto">
+          <table class="adv-table">
+            <thead><tr><th>Nombre</th><th>Asignado</th><th>Entregado</th><th>Stock Actual</th></tr></thead>
+            <tbody>${data.map(r => `<tr>
+              <td>${esc(r.nombre)}</td>
+              <td>${r.total_asignado}</td>
+              <td>${r.total_entregado}</td>
+              <td><b style="color:${+r.stock>0?'var(--ac)':+r.stock<0?'var(--err)':'var(--mut)'}">${r.stock}</b></td>
+            </tr>`).join('')}</tbody>
+          </table>
+          </div>
+        </div>`;
+      tblDiv.innerHTML = tbl('🧪 Muestras', muestras) + tbl('📦 Productos', productos);
+    };
+    body.innerHTML = visitadorSel + '<div id="asig_stock_tbl"><p style="color:var(--mut)">Cargando...</p></div>';
+    await renderStock('');
+    if (me.admin) {
+      $('#asig_vis_sel').onchange = async e => { await renderStock(e.target.value); };
+    }
+
+  // ===== TAB: Reporte =====
+  } else if (tab === 'reporte') {
+    const visitadores = await api('/api/inventory/visitadores');
+    const visOpts = '<option value="">Todos los visitadores</option>' +
+      visitadores.map(v => `<option value="${v.id}">${esc(v.nombre)}</option>`).join('');
+
+    body.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:12px;color:var(--mut)">Desde</label>
+            <input type="date" id="rpt_from" style="padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg2);color:var(--tx)">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:12px;color:var(--mut)">Hasta</label>
+            <input type="date" id="rpt_to" style="padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg2);color:var(--tx)">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:12px;color:var(--mut)">Visitador</label>
+            <select id="rpt_vis" style="padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg2);color:var(--tx)">${visOpts}</select>
+          </div>
+          <button id="rpt_btn" class="btn">🔍 Filtrar</button>
+        </div>
+      </div>
+      <div id="rpt_result"></div>`;
+
+    const loadReport = async () => {
+      const from = $('#rpt_from').value;
+      const to = $('#rpt_to').value;
+      const vid = $('#rpt_vis').value;
+      let url = '/api/inventory/report?x=1';
+      if (from) url += '&from=' + from;
+      if (to)   url += '&to=' + to;
+      if (vid)  url += '&visitador_id=' + vid;
+      const result = $('#rpt_result');
+      result.innerHTML = '<p style="color:var(--mut)">Cargando...</p>';
+      const rows = await api(url);
+      if (!rows.length) {
+        result.innerHTML = '<p style="color:var(--mut);padding:16px">Sin datos para los filtros seleccionados.</p>';
+        return;
+      }
+      const byVis = {};
+      for (const r of rows) {
+        const key = r.visitador_id;
+        if (!byVis[key]) byVis[key] = { nombre: r.visitador_nombre, email: r.visitador_email, items: [] };
+        byVis[key].items.push(r);
+      }
+      let html = '';
+      for (const [vid2, vis] of Object.entries(byVis)) {
+        const totalAsig = vis.items.reduce((s,r) => s + (+r.total_asignado), 0);
+        const totalEnt  = vis.items.reduce((s,r) => s + (+r.total_entregado), 0);
+        const totalStk  = vis.items.reduce((s,r) => s + (+r.stock_actual), 0);
+        html += `<div class="card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <div>
+              <b style="font-size:16px">${esc(vis.nombre)}</b>
+              <span style="color:var(--mut);font-size:12px;margin-left:8px">${esc(vis.email)}</span>
+            </div>
+            <div style="display:flex;gap:12px;font-size:13px">
+              <span>Asignado: <b>${totalAsig}</b></span>
+              <span>Entregado: <b>${totalEnt}</b></span>
+              <span>Stock: <b style="color:${totalStk>0?'var(--ac)':totalStk<0?'var(--err)':'var(--mut)'}">${totalStk}</b></span>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+          <table class="adv-table">
+            <thead><tr><th>Tipo</th><th>Nombre</th><th>Asignado</th><th>Entregado</th><th>Stock</th></tr></thead>
+            <tbody>${vis.items.map(r => `<tr>
+              <td><span style="font-size:11px;padding:2px 6px;border-radius:4px;background:${r.tipo==='muestra'?'rgba(0,180,160,.15)':'rgba(100,100,255,.12)'}">${r.tipo}</span></td>
+              <td>${esc(r.nombre)}</td>
+              <td>${r.total_asignado}</td>
+              <td>${r.total_entregado}</td>
+              <td><b style="color:${+r.stock_actual>0?'var(--ac)':+r.stock_actual<0?'var(--err)':'var(--mut)'}">${r.stock_actual}</b></td>
+            </tr>`).join('')}</tbody>
+          </table>
+          </div>
+          <div style="margin-top:10px">
+            <button class="btn btn-sm" data-vid="${vid2}" data-vnom="${esc(vis.nombre)}" data-rpt-detail>📋 Ver entregas detalladas</button>
+          </div>
+          <div id="detail_${vid2}" style="display:none;margin-top:12px"></div>
+        </div>`;
+      }
+      result.innerHTML = html;
+
+      document.querySelectorAll('[data-rpt-detail]').forEach(btn => {
+        btn.onclick = async () => {
+          const dvid = btn.dataset.vid;
+          const detailDiv = $('#detail_' + dvid);
+          if (detailDiv.style.display !== 'none') {
+            detailDiv.style.display = 'none';
+            btn.textContent = '📋 Ver entregas detalladas';
+            return;
+          }
+          detailDiv.innerHTML = '<p style="color:var(--mut)">Cargando...</p>';
+          detailDiv.style.display = 'block';
+          btn.textContent = '▲ Ocultar';
+          const from2 = $('#rpt_from').value;
+          const to2   = $('#rpt_to').value;
+          let durl = '/api/inventory/deliveries/' + dvid + '?x=1';
+          if (from2) durl += '&from=' + from2;
+          if (to2)   durl += '&to=' + to2;
+          const deliveries = await api(durl);
+          if (!deliveries.length) {
+            detailDiv.innerHTML = '<p style="color:var(--mut);padding:8px">Sin entregas registradas.</p>';
+            return;
+          }
+          detailDiv.innerHTML = `<b style="display:block;margin-bottom:8px">Entregas a médicos — ${esc(btn.dataset.vnom)}</b>
+            <div style="overflow-x:auto">
+            <table class="adv-table">
+              <thead><tr><th>Fecha</th><th>Médico</th><th>Tipo</th><th>Nombre</th><th>Cantidad</th></tr></thead>
+              <tbody>${deliveries.map(d => `<tr>
+                <td style="white-space:nowrap">${new Date(d.fecha).toLocaleDateString('es-VE')}</td>
+                <td>${esc(d.medico||d.razon_social||'—')}</td>
+                <td>${d.tipo}</td>
+                <td>${esc(d.nombre)}</td>
+                <td>${Math.abs(d.cantidad)}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+            </div>`;
+        };
+      });
+    };
+
+    $('#rpt_btn').onclick = loadReport;
+    await loadReport();
+  }
 }
 
 async function vNueva() {
@@ -1449,7 +3262,6 @@ async function vNueva() {
     body.cedula = fullCed;
     body.tipo_visita = currentTipoVisita || 'primera';
 
-    if (!body.lugar_visita || !body.razon_social) return toast('Completa lugar de visita y razón social', 1);
     $('#save').disabled = true;
 
     const client_uuid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('off_' + Date.now() + '_' + Math.random().toString(36).slice(2));
@@ -1566,9 +3378,16 @@ function detail(v, reload) {
 }
 
 // ---------- Configuración ----------
-async function vConfig(tab = 'usuarios', subcat = 'muestras') {
+async function vConfig(tab, subcat = 'muestras') {
+  if (!me.admin) tab = 'dispositivos';
+  else if (!tab) tab = 'usuarios';
+
   const main = $('#main');
-  const tabs = `<h1>Configuración</h1><div class="tabs">${[['usuarios', 'Usuarios'], ['institucion', 'Tipos de institución'], ['especialidad', 'Especialidades'], ['producto', 'Muestras / Productos']].map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
+  const availableTabs = me.admin
+    ? [['usuarios', 'Usuarios'], ['dispositivos', 'Dispositivos'], ['institucion', 'Tipos de institución'], ['especialidad', 'Especialidades'], ['producto', 'Muestras / Productos']]
+    : [['dispositivos', 'Dispositivos']];
+
+  const tabs = `<h1>Configuración</h1><div class="tabs">${availableTabs.map(([k, l]) => `<button class="${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>`;
   if (tab === 'usuarios') {
     const us = await api('/api/users');
     main.innerHTML = tabs + `<div class="card"><h2>Agregar usuario</h2><div class="filters"><label class="fld">Correo de Gmail<input id="ne" type="email" placeholder="correo@gmail.com"></label>
@@ -1594,6 +3413,7 @@ async function vConfig(tab = 'usuarios', subcat = 'muestras') {
           <td>${logsBadge}</td>
           <td><span class="badge ${u.activo ? '' : 'off'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
           <td style="text-align:right;white-space:nowrap">
+            <button class="btn sec sm" data-dev="${u.id}" title="Ver dispositivos vinculados" style="margin-right:6px">📱 Dispositivos</button>
             ${m ? '' : `<button class="btn sec sm" data-edit="${u.id}" style="margin-right:6px">✏️ Editar</button>`}
             ${m ? '' : `<button class="btn sec sm ${u.activo ? 'dg' : ''}" data-tg="${u.id}" data-a="${u.activo}">${u.activo ? 'Desactivar' : 'Activar'}</button>`}
           </td>
@@ -1711,6 +3531,110 @@ async function vConfig(tab = 'usuarios', subcat = 'muestras') {
       };
     }
 
+    function openUserDevicesModal(u) {
+      const m = document.createElement('div');
+      m.className = 'modal';
+      m.innerHTML = `
+        <div class="card" style="max-width:680px;width:100%">
+          <div class="row2" style="justify-content:space-between;margin-bottom:12px">
+            <h2 style="margin:0;font-size:18px;display:flex;align-items:center;gap:8px">
+              <span>📱</span> Dispositivos de ${esc(u.nombre || u.email)}
+            </h2>
+            <button type="button" class="btn sec sm" id="ud_close" style="font-size:16px;padding:2px 8px">✕</button>
+          </div>
+          <p style="color:var(--mut);font-size:13px;margin-bottom:16px">
+            Dispositivos autorizados para acceso sin conexión (offline) y sincronización de visitas.
+          </p>
+          <div id="ud_list" style="min-height:100px;overflow-x:auto">
+            <div style="text-align:center;padding:24px;color:var(--mut)">Cargando dispositivos…</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(m);
+      m.querySelector('#ud_close').onclick = () => m.remove();
+
+      async function load() {
+        const listEl = m.querySelector('#ud_list');
+        try {
+          const devs = await api('/api/users/' + u.id + '/devices');
+          if (!devs.length) {
+            listEl.innerHTML = `<div style="text-align:center;padding:24px;color:var(--mut);border:1px dashed var(--bd);border-radius:8px">No hay dispositivos vinculados aún para este usuario.</div>`;
+            return;
+          }
+          listEl.innerHTML = `
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="border-bottom:1px solid var(--bd);text-align:left">
+                  <th style="padding:8px">Dispositivo</th>
+                  <th style="padding:8px">Seguridad</th>
+                  <th style="padding:8px">Última sinc.</th>
+                  <th style="padding:8px">Estado</th>
+                  <th style="padding:8px;text-align:right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${devs.map(d => {
+                  const dt = d.last_sync ? new Date(d.last_sync).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca';
+                  return `
+                    <tr style="border-bottom:1px solid var(--bd)">
+                      <td style="padding:8px">
+                        <b>${esc(d.device_name || 'Dispositivo')}</b><br>
+                        <code style="font-size:10px;color:var(--mut)">${esc((d.device_id || '').slice(0, 16))}…</code>
+                      </td>
+                      <td style="padding:8px;white-space:nowrap">
+                        ${d.is_trusted ? '<span class="badge" style="background:rgba(15,157,138,.12);color:var(--ac);margin-right:4px">Confiable</span>' : ''}
+                        ${d.has_biometrics ? '<span class="badge" style="margin-right:4px">Huella</span>' : ''}
+                        ${d.has_pin ? '<span class="badge">PIN</span>' : ''}
+                      </td>
+                      <td style="padding:8px;font-size:12px;color:var(--mut)">${dt}</td>
+                      <td style="padding:8px">
+                        <span class="badge ${d.activo ? '' : 'off'}">${d.activo ? 'Activo' : 'Revocado'}</span>
+                      </td>
+                      <td style="padding:8px;text-align:right;white-space:nowrap">
+                        <button class="btn sec sm ${d.activo ? 'dg' : ''}" data-act="${d.id}" data-st="${d.activo}" style="margin-right:4px">
+                          ${d.activo ? 'Revocar' : 'Reactivar'}
+                        </button>
+                        <button class="btn sec dg sm" data-del="${d.id}">Eliminar</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+
+          listEl.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+            const id = b.dataset.act;
+            const curActive = b.dataset.st === 'true';
+            try {
+              await api('/api/devices/' + id, { method: 'PATCH', body: { activo: !curActive } });
+              toast(`Dispositivo ${curActive ? 'revocado' : 'reactivado'}`);
+              load();
+            } catch (e) { toast(e.message, 1); }
+          });
+
+          listEl.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+            if (!confirm('¿Eliminar definitivamente este dispositivo vinculado?')) return;
+            try {
+              await api('/api/devices/' + b.dataset.del, { method: 'DELETE' });
+              toast('Dispositivo eliminado');
+              load();
+            } catch (e) { toast(e.message, 1); }
+          });
+        } catch (e) {
+          listEl.innerHTML = `<div style="color:var(--dg);padding:16px">${esc(e.message || 'Error cargando dispositivos')}</div>`;
+        }
+      }
+      load();
+    }
+
+    main.querySelectorAll('[data-dev]').forEach(b => {
+      b.onclick = () => {
+        const u = us.find(x => x.id === +b.dataset.dev);
+        if (u) openUserDevicesModal(u);
+      };
+    });
+
     main.querySelectorAll('[data-edit]').forEach(b => {
       b.onclick = () => {
         const u = us.find(x => x.id === +b.dataset.edit);
@@ -1727,6 +3651,279 @@ async function vConfig(tab = 'usuarios', subcat = 'muestras') {
         toast(e.message, 1);
       }
     });
+  } else if (tab === 'dispositivos') {
+    let myDevData = { devices: [], maxAllowed: me.admin ? 4 : 2, activeCount: 0 };
+    try {
+      myDevData = await api('/api/devices/my');
+      await dbSaveCache('my_devices', myDevData);
+    } catch (e) {
+      myDevData = (await dbGetCache('my_devices')) || null;
+      if (!myDevData) {
+        const localBinding = await dbGetCache('device_binding');
+        if (localBinding) {
+          myDevData = {
+            devices: [{
+              id: 0,
+              device_id: localBinding.deviceId,
+              device_name: localBinding.deviceName,
+              is_trusted: localBinding.isTrusted,
+              has_biometrics: localBinding.hasBiometrics,
+              has_pin: !!localBinding.pinHash,
+              last_sync: localBinding.updatedAt,
+              activo: true,
+              creado: localBinding.updatedAt
+            }],
+            maxAllowed: me.admin ? 4 : 2,
+            activeCount: 1
+          };
+        } else {
+          myDevData = { devices: [], maxAllowed: me.admin ? 4 : 2, activeCount: 0 };
+        }
+      }
+    }
+    const myDevs = myDevData.devices || [];
+    const maxAllowed = myDevData.maxAllowed || (me.admin ? 4 : 2);
+    const activeCount = myDevData.activeCount ?? myDevs.filter(d => d.activo).length;
+
+    const curDid = getDeviceId();
+    const curDev = myDevs.find(d => d.device_id === curDid);
+    const isCurLinked = !!curDev && curDev.activo;
+    const canLinkMore = activeCount < maxAllowed;
+
+    main.innerHTML = tabs + `
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+          <div>
+            <h2 style="margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:8px">
+              <span>📱</span> Dispositivos Vinculados
+            </h2>
+            <div style="color:var(--mut);font-size:13px">
+              Equipos autorizados para entrar al ERP sin conexión a internet y registrar visitas.
+            </div>
+          </div>
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:99px;background:${activeCount >= maxAllowed ? 'rgba(239,68,68,.12)' : 'rgba(15,157,138,.12)'};color:${activeCount >= maxAllowed ? 'var(--dg)' : 'var(--ac)'};font-weight:700;font-size:13px;border:1px solid rgba(255,255,255,.05)">
+            <span>${activeCount} de ${maxAllowed} cupos utilizados (${me.rol === 'visitador' ? 'Operador' : 'Administrador'})</span>
+          </div>
+        </div>
+
+        <div style="background:rgba(15,157,138,.06);border:1px solid rgba(15,157,138,.18);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--tx)">
+          💡 <strong>Regla de vinculación:</strong> Los operadores pueden vincular hasta <strong>2 dispositivos</strong> y los administradores hasta <strong>4</strong>. Puedes desvincular cualquier equipo en desuso para liberar un cupo cuando cambies de teléfono o tablet.
+        </div>
+      </div>
+
+      <!-- Estado de este equipo actual -->
+      <div class="card" style="border-left:4px solid ${isCurLinked ? 'var(--ac)' : '#f59e0b'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--mut);letter-spacing:.5px;margin-bottom:2px">
+              Este Equipo Actual
+            </div>
+            <div style="font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">
+              <span>${esc(getDeviceFriendlyName())}</span>
+              ${isCurLinked
+                ? '<span class="badge" style="background:rgba(15,157,138,.12);color:var(--ac)">🟢 Vinculado</span>'
+                : '<span class="badge" style="background:rgba(245,158,11,.15);color:#d97706">⚪ No vinculado</span>'}
+            </div>
+            <div style="font-size:12px;color:var(--mut);margin-top:2px">
+              ID: <code style="font-size:11px">${esc(curDid.slice(0, 16))}…</code>
+              ${curDev ? ` · ${curDev.is_trusted ? 'Confiable (Auto-login)' : 'Requiere clave'} · ${curDev.has_biometrics ? 'Huella activa' : 'Sin huella'} · ${curDev.has_pin ? 'PIN activo' : 'Sin PIN'}` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${isCurLinked ? `
+              <button class="btn sec" id="btn_cfg_cur_dev">⚙️ Configurar PIN / Huella</button>
+              <button class="btn sec dg" id="btn_unlink_cur_dev">Desvincular este equipo</button>
+            ` : `
+              <button class="btn" id="btn_link_cur_dev" ${!canLinkMore ? 'disabled title="Límite alcanzado"' : ''}>
+                📱 Vincular este equipo ahora
+              </button>
+            `}
+          </div>
+        </div>
+        ${!isCurLinked && !canLinkMore ? `
+          <div style="color:var(--dg);font-size:12px;margin-top:8px">
+            ⚠️ Has alcanzado el límite máximo de ${maxAllowed} dispositivos. Desvincula un dispositivo de la lista abajo para poder vincular este equipo.
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Lista de dispositivos vinculados -->
+      <div class="card scroll">
+        <h3 style="font-size:15px;margin:0 0 12px">Mis Dispositivos Vinculados</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="border-bottom:2px solid var(--bd);text-align:left">
+              <th style="padding:10px 12px">Dispositivo</th>
+              <th style="padding:10px 12px">Seguridad</th>
+              <th style="padding:10px 12px">Vinculado</th>
+              <th style="padding:10px 12px">Última actividad</th>
+              <th style="padding:10px 12px">Estado</th>
+              <th style="padding:10px 12px;text-align:right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${myDevs.length ? myDevs.map(d => {
+              const isThis = d.device_id === curDid;
+              const dtC = d.creado ? new Date(d.creado).toLocaleDateString('es-VE') : '—';
+              const dtS = d.last_sync ? new Date(d.last_sync).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca';
+              return `
+                <tr style="border-bottom:1px solid var(--bd);background:${isThis ? 'rgba(15,157,138,.04)' : ''}">
+                  <td style="padding:10px 12px">
+                    <b>${esc(d.device_name || 'Dispositivo')}</b>
+                    ${isThis ? '<span class="badge" style="background:rgba(15,157,138,.12);color:var(--ac);margin-left:6px">Este equipo</span>' : ''}
+                    <br><code style="font-size:10px;color:var(--mut)">${esc((d.device_id || '').slice(0, 16))}…</code>
+                  </td>
+                  <td style="padding:10px 12px;white-space:nowrap">
+                    ${d.is_trusted ? '<span class="badge" style="background:rgba(15,157,138,.12);color:var(--ac);margin-right:4px">Confiable</span>' : ''}
+                    ${d.has_biometrics ? '<span class="badge" style="margin-right:4px">Huella</span>' : ''}
+                    ${d.has_pin ? '<span class="badge">PIN</span>' : ''}
+                  </td>
+                  <td style="padding:10px 12px;font-size:12px;color:var(--mut)">${dtC}</td>
+                  <td style="padding:10px 12px;font-size:12px;color:var(--mut)">${dtS}</td>
+                  <td style="padding:10px 12px">
+                    <span class="badge ${d.activo ? '' : 'off'}">${d.activo ? 'Activo' : 'Revocado'}</span>
+                  </td>
+                  <td style="padding:10px 12px;text-align:right;white-space:nowrap">
+                    <button class="btn sec dg sm" data-my-del="${d.id}" data-name="${esc(d.device_name || 'Dispositivo')}">Desvincular</button>
+                  </td>
+                </tr>
+              `;
+            }).join('') : `
+              <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--mut)">No tienes ningún dispositivo vinculado todavía.</td></tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+
+      ${me.admin ? `
+        <div class="card" style="margin-top:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+            <div>
+              <h3 style="font-size:15px;margin:0 0 4px">🏢 Auditoría: Todos los Dispositivos de la Empresa</h3>
+              <div style="font-size:12px;color:var(--mut)">Supervisión global de equipos vinculados de todos los visitadores y administradores.</div>
+            </div>
+            <button class="btn sec sm" id="btn_load_all_devs">Cargar Todos los Dispositivos</button>
+          </div>
+          <div id="all_devs_wrap" style="display:none"></div>
+        </div>
+      ` : ''}
+    `;
+
+    if ($('#btn_link_cur_dev')) {
+      $('#btn_link_cur_dev').onclick = () => {
+        openDeviceEnrollmentModal(me, false, () => vConfig('dispositivos'));
+      };
+    }
+    if ($('#btn_cfg_cur_dev')) {
+      $('#btn_cfg_cur_dev').onclick = () => {
+        openDeviceEnrollmentModal(me, true, () => vConfig('dispositivos'));
+      };
+    }
+    if ($('#btn_unlink_cur_dev')) {
+      $('#btn_unlink_cur_dev').onclick = async () => {
+        if (!confirm('¿Desvincular este equipo? Ya no podrás ingresar sin conexión a internet desde aquí hasta volver a vincularlo.')) return;
+        try {
+          if (curDev) await api('/api/devices/' + curDev.id, { method: 'DELETE' });
+          await dbSaveCache('device_binding', null);
+          toast('Equipo desvinculado');
+          vConfig('dispositivos');
+        } catch (e) { toast(e.message, 1); }
+      };
+    }
+
+    main.querySelectorAll('[data-my-del]').forEach(b => b.onclick = async () => {
+      const id = b.dataset.myDel;
+      const name = b.dataset.name;
+      if (!confirm(`¿Estás seguro de que deseas desvincular "${name}"? Se liberará 1 cupo de dispositivo.`)) return;
+      try {
+        await api('/api/devices/' + id, { method: 'DELETE' });
+        if (curDev && curDev.id === +id) {
+          await dbSaveCache('device_binding', null);
+        }
+        toast('Dispositivo desvinculado');
+        vConfig('dispositivos');
+      } catch (e) { toast(e.message, 1); }
+    });
+
+    if (me.admin && $('#btn_load_all_devs')) {
+      $('#btn_load_all_devs').onclick = async () => {
+        const wrap = $('#all_devs_wrap');
+        wrap.style.display = 'block';
+        wrap.innerHTML = '<div style="text-align:center;padding:16px;color:var(--mut)">Cargando lista global…</div>';
+        try {
+          const allDevs = await api('/api/devices/all');
+          if (!allDevs.length) {
+            wrap.innerHTML = '<div style="padding:16px;color:var(--mut);text-align:center">No hay dispositivos registrados en la empresa.</div>';
+            return;
+          }
+          wrap.innerHTML = `
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px">
+              <thead>
+                <tr style="border-bottom:1px solid var(--bd);text-align:left">
+                  <th style="padding:8px">Usuario</th>
+                  <th style="padding:8px">Dispositivo</th>
+                  <th style="padding:8px">Seguridad</th>
+                  <th style="padding:8px">Última sinc.</th>
+                  <th style="padding:8px">Estado</th>
+                  <th style="padding:8px;text-align:right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allDevs.map(d => {
+                  const dtS = d.last_sync ? new Date(d.last_sync).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca';
+                  return `
+                    <tr style="border-bottom:1px solid var(--bd)">
+                      <td style="padding:8px">
+                        <b>${esc(d.user_nombre || d.user_email)}</b><br>
+                        <small style="color:var(--mut)">${esc(d.user_email)} (${esc(d.user_rol)})</small>
+                      </td>
+                      <td style="padding:8px">
+                        <b>${esc(d.device_name || 'Dispositivo')}</b><br>
+                        <code style="font-size:10px;color:var(--mut)">${esc((d.device_id || '').slice(0, 16))}…</code>
+                      </td>
+                      <td style="padding:8px;white-space:nowrap">
+                        ${d.is_trusted ? '<span class="badge" style="background:rgba(15,157,138,.12);color:var(--ac);margin-right:4px">Confiable</span>' : ''}
+                        ${d.has_biometrics ? '<span class="badge" style="margin-right:4px">Huella</span>' : ''}
+                        ${d.has_pin ? '<span class="badge">PIN</span>' : ''}
+                      </td>
+                      <td style="padding:8px;font-size:12px;color:var(--mut)">${dtS}</td>
+                      <td style="padding:8px"><span class="badge ${d.activo ? '' : 'off'}">${d.activo ? 'Activo' : 'Revocado'}</span></td>
+                      <td style="padding:8px;text-align:right;white-space:nowrap">
+                        <button class="btn sec sm ${d.activo ? 'dg' : ''}" data-admin-act="${d.id}" data-st="${d.activo}" style="margin-right:4px">
+                          ${d.activo ? 'Revocar' : 'Reactivar'}
+                        </button>
+                        <button class="btn sec dg sm" data-admin-del="${d.id}">Eliminar</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+
+          wrap.querySelectorAll('[data-admin-act]').forEach(b => b.onclick = async () => {
+            const id = b.dataset.adminAct;
+            const curActive = b.dataset.st === 'true';
+            try {
+              await api('/api/devices/' + id, { method: 'PATCH', body: { activo: !curActive } });
+              toast(`Dispositivo ${curActive ? 'revocado' : 'reactivado'}`);
+              $('#btn_load_all_devs').click();
+            } catch (e) { toast(e.message, 1); }
+          });
+
+          wrap.querySelectorAll('[data-admin-del]').forEach(b => b.onclick = async () => {
+            if (!confirm('¿Eliminar definitivamente este dispositivo vinculado?')) return;
+            try {
+              await api('/api/devices/' + b.dataset.adminDel, { method: 'DELETE' });
+              toast('Dispositivo eliminado');
+              $('#btn_load_all_devs').click();
+            } catch (e) { toast(e.message, 1); }
+          });
+        } catch (e) {
+          wrap.innerHTML = `<div style="color:var(--dg);padding:12px">${esc(e.message || 'Error')}</div>`;
+        }
+      };
+    }
   } else if (tab === 'institucion' || tab === 'especialidad') {
     cat = await api('/api/catalogs');
     cat.muestra = cat.muestra || [];

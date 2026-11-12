@@ -134,6 +134,73 @@ async function initDb() {
     UNIQUE(user_id, endpoint)
   )`);
 
+  // Dispositivos vinculados para acceso offline y trazabilidad
+  await q(`CREATE TABLE IF NOT EXISTS user_devices(
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    device_name TEXT,
+    is_trusted BOOLEAN NOT NULL DEFAULT true,
+    has_biometrics BOOLEAN NOT NULL DEFAULT false,
+    has_pin BOOLEAN NOT NULL DEFAULT false,
+    last_sync TIMESTAMPTZ DEFAULT now(),
+    activo BOOLEAN NOT NULL DEFAULT true,
+    creado TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(user_id, device_id)
+  )`);
+  await q('CREATE INDEX IF NOT EXISTS idx_user_devices_uid ON user_devices(user_id)');
+  await q('CREATE INDEX IF NOT EXISTS idx_user_devices_did ON user_devices(device_id)');
+
+  // ---------- Pedidos ----------
+  await q(`CREATE TABLE IF NOT EXISTS orders(
+    id SERIAL PRIMARY KEY,
+    visitador_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    medico TEXT NOT NULL,
+    fecha_solicitud DATE NOT NULL DEFAULT CURRENT_DATE,
+    fecha_entrega DATE,
+    status TEXT NOT NULL DEFAULT 'enviado'
+      CHECK (status IN ('enviado','revision','aprobado','listo','rechazado')),
+    notas TEXT,
+    admin_notas TEXT,
+    tomado_por INT REFERENCES users(id),
+    pending_edit BOOLEAN NOT NULL DEFAULT false,
+    creado TIMESTAMPTZ DEFAULT now(),
+    actualizado TIMESTAMPTZ DEFAULT now()
+  )`);
+  await q('CREATE INDEX IF NOT EXISTS idx_orders_vis ON orders(visitador_id)');
+  await q('CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)');
+
+  await q(`CREATE TABLE IF NOT EXISTS order_items(
+    id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    catalogo_id INT REFERENCES catalogs(id) ON DELETE SET NULL,
+    nombre TEXT NOT NULL,
+    tipo TEXT NOT NULL CHECK (tipo IN ('muestra','producto')),
+    cantidad_solicitada INT NOT NULL DEFAULT 1,
+    cantidad_aprobada INT,
+    rechazado BOOLEAN NOT NULL DEFAULT false,
+    razon_rechazo TEXT
+  )`);
+  await q('CREATE INDEX IF NOT EXISTS idx_order_items_oid ON order_items(order_id)');
+
+  // ---------- Asignaciones e Inventario ----------
+  await q(`CREATE TABLE IF NOT EXISTS inventory_movements(
+    id SERIAL PRIMARY KEY,
+    visitador_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL CHECK (tipo IN ('muestra','producto')),
+    catalogo_id INT REFERENCES catalogs(id) ON DELETE SET NULL,
+    nombre TEXT NOT NULL,
+    cantidad INT NOT NULL,
+    origen TEXT NOT NULL CHECK (origen IN ('pedido','visita','ajuste')),
+    referencia_id INT,
+    medico TEXT,
+    notas TEXT,
+    fecha TIMESTAMPTZ DEFAULT now()
+  )`);
+  await q('CREATE INDEX IF NOT EXISTS idx_inv_vis ON inventory_movements(visitador_id)');
+  await q('CREATE INDEX IF NOT EXISTS idx_inv_fecha ON inventory_movements(fecha)');
+  await q('CREATE INDEX IF NOT EXISTS idx_inv_ref ON inventory_movements(origen, referencia_id)');
+
   if (!(await q('SELECT 1 FROM geography LIMIT 1')).rowCount) {
     try {
       const geoPath = path.join(__dirname, 'geografia.json');
@@ -191,6 +258,21 @@ async function auth(req, res, next) {
     u = (await q('SELECT * FROM users WHERE email=$1 AND activo', [email])).rows[0];
   } catch (e) { /* sin sesión */ }
   if (!u) return res.status(401).json({ error: 'No autenticado' });
+
+  // Validación de dispositivo si se envía x-device-id
+  const did = req.headers['x-device-id'];
+  if (did) {
+    try {
+      const dev = (await q('SELECT activo FROM user_devices WHERE user_id=$1 AND device_id=$2', [u.id, did])).rows[0];
+      if (dev && !dev.activo) {
+        return res.status(403).json({ error: 'Este dispositivo ha sido revocado o desvinculado por un administrador.', code: 'DEVICE_REVOKED' });
+      }
+      if (dev) {
+        q('UPDATE user_devices SET last_sync=now() WHERE user_id=$1 AND device_id=$2', [u.id, did]).catch(() => {});
+      }
+    } catch (e) {}
+  }
+
   req.user = u; next();
 }
 
@@ -243,8 +325,8 @@ app.post('/api/auth/firebase', wrap(async (req, res) => {
 
   if (!u) return res.status(403).json({ error: `El correo "${email}" no está autorizado. Solicita acceso a un administrador.` });
   if (!u.nombre && p.displayName) await q('UPDATE users SET nombre=$1 WHERE id=$2', [p.displayName, u.id]);
-  res.cookie('sid', jwt.sign({ email }, JWT_SECRET, { expiresIn: '12h' }),
-    { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 12 * 3600e3 });
+  res.cookie('sid', jwt.sign({ email }, JWT_SECRET, { expiresIn: '30d' }),
+    { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 30 * 24 * 3600e3 });
   req.user = u;
   await logActivity(req, 'LOGIN', 'Autenticación', `Inicio de sesión exitoso de ${u.nombre || email} (${email})`);
   res.json({ ok: true });
@@ -452,7 +534,535 @@ app.delete('/api/users/:id', auth, admin, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ---------- Visitas ----------
+// ---------- Dispositivos Vinculados ----------
+app.post('/api/devices/bind', auth, wrap(async (req, res) => {
+  const { deviceId, deviceName, isTrusted, hasBiometrics, hasPin } = req.body || {};
+  if (!deviceId) return res.status(400).json({ error: 'Identificador de dispositivo requerido' });
+
+  // Límite de dispositivos: Operadores (visitadores) máximo 2, Administradores/Master máximo 4
+  const maxAllowed = isAdm(req.user) ? 4 : 2;
+  const existingThisDevice = (await q('SELECT id, activo FROM user_devices WHERE user_id=$1 AND device_id=$2', [req.user.id, deviceId])).rows[0];
+
+  if (!existingThisDevice || !existingThisDevice.activo) {
+    const countRes = await q('SELECT count(*) FROM user_devices WHERE user_id=$1 AND activo=true AND device_id != $2', [req.user.id, deviceId]);
+    const activeCount = parseInt(countRes.rows[0].count, 10);
+    if (activeCount >= maxAllowed) {
+      return res.status(400).json({
+        error: `Has alcanzado el límite máximo de ${maxAllowed} dispositivo(s) vinculado(s) para tu rol (${req.user.rol}). Debes desvincular un equipo anterior en Configuración > Dispositivos antes de vincular este equipo.`,
+        code: 'DEVICE_LIMIT_REACHED',
+        maxAllowed,
+        activeCount
+      });
+    }
+  }
+
+  const r = await q(`
+    INSERT INTO user_devices(user_id, device_id, device_name, is_trusted, has_biometrics, has_pin, last_sync, activo)
+    VALUES($1, $2, $3, $4, $5, $6, now(), true)
+    ON CONFLICT(user_id, device_id)
+    DO UPDATE SET device_name=EXCLUDED.device_name,
+                  is_trusted=EXCLUDED.is_trusted,
+                  has_biometrics=EXCLUDED.has_biometrics,
+                  has_pin=EXCLUDED.has_pin,
+                  last_sync=now(),
+                  activo=true
+    RETURNING *
+  `, [req.user.id, deviceId, deviceName || 'Navegador Web', isTrusted !== false, !!hasBiometrics, !!hasPin]);
+
+  await logActivity(req, 'VINCULAR_DISPOSITIVO', 'Dispositivos', `Dispositivo vinculado: "${deviceName || 'Dispositivo'}" (${deviceId.slice(0, 8)}...) para ${req.user.email}`);
+  res.json({ ok: true, device: r.rows[0], maxAllowed });
+}));
+
+app.get('/api/devices/my', auth, wrap(async (req, res) => {
+  const maxAllowed = isAdm(req.user) ? 4 : 2;
+  const rows = (await q('SELECT id, device_id, device_name, is_trusted, has_biometrics, has_pin, last_sync, activo, creado FROM user_devices WHERE user_id=$1 ORDER BY last_sync DESC', [req.user.id])).rows;
+  res.json({ devices: rows, maxAllowed, activeCount: rows.filter(d => d.activo).length });
+}));
+
+app.get('/api/devices/all', auth, admin, wrap(async (req, res) => {
+  const rows = (await q(`
+    SELECT d.id, d.device_id, d.device_name, d.is_trusted, d.has_biometrics, d.has_pin, d.last_sync, d.activo, d.creado,
+           u.id as user_id, u.nombre as user_nombre, u.email as user_email, u.rol as user_rol
+    FROM user_devices d
+    JOIN users u ON u.id = d.user_id
+    ORDER BY d.last_sync DESC
+  `)).rows;
+  res.json(rows);
+}));
+
+app.get('/api/users/:id/devices', auth, admin, wrap(async (req, res) => {
+  const userId = +req.params.id;
+  const rows = (await q('SELECT id, device_id, device_name, is_trusted, has_biometrics, has_pin, last_sync, activo, creado FROM user_devices WHERE user_id=$1 ORDER BY last_sync DESC', [userId])).rows;
+  res.json(rows);
+}));
+
+app.patch('/api/devices/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const dev = (await q('SELECT * FROM user_devices WHERE id=$1', [id])).rows[0];
+  if (!dev) return res.status(404).json({ error: 'Dispositivo no encontrado' });
+  if (dev.user_id !== req.user.id && !isAdm(req.user)) {
+    return res.status(403).json({ error: 'No autorizado' });
+  }
+  const activo = req.body.activo !== false;
+  await q('UPDATE user_devices SET activo=$1 WHERE id=$2', [activo, id]);
+  await logActivity(req, 'ESTADO_DISPOSITIVO', 'Dispositivos', `Dispositivo #${id} ("${dev.device_name}") ${activo ? 'activado' : 'revocado/bloqueado'}`);
+  res.json({ ok: true, activo });
+}));
+
+app.delete('/api/devices/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const dev = (await q('SELECT * FROM user_devices WHERE id=$1', [id])).rows[0];
+  if (!dev) return res.status(404).json({ error: 'Dispositivo no encontrado' });
+  if (dev.user_id !== req.user.id && !isAdm(req.user)) {
+    return res.status(403).json({ error: 'No autorizado' });
+  }
+  await q('DELETE FROM user_devices WHERE id=$1', [id]);
+  await logActivity(req, 'ELIMINAR_DISPOSITIVO', 'Dispositivos', `Dispositivo #${id} ("${dev.device_name}") desvinculado`);
+  res.json({ ok: true });
+}));
+
+// ==================== PEDIDOS ====================
+
+// Helper: obtener pedido completo con items y datos de visitador/admin
+async function getOrderFull(id) {
+  const ord = (await q(`
+    SELECT o.*,
+      u.nombre AS visitador_nombre, u.email AS visitador_email,
+      a.nombre AS admin_nombre
+    FROM orders o
+    JOIN users u ON u.id = o.visitador_id
+    LEFT JOIN users a ON a.id = o.tomado_por
+    WHERE o.id = $1
+  `, [id])).rows[0];
+  if (!ord) return null;
+  ord.items = (await q('SELECT * FROM order_items WHERE order_id=$1 ORDER BY id', [id])).rows;
+  return ord;
+}
+
+// GET /api/orders
+app.get('/api/orders', auth, wrap(async (req, res) => {
+  const { status, visitador_id } = req.query;
+  let conds = [];
+  let vals = [];
+  let idx = 1;
+  if (!isAdm(req.user)) {
+    conds.push(`o.visitador_id = $${idx++}`);
+    vals.push(req.user.id);
+  } else if (visitador_id) {
+    conds.push(`o.visitador_id = $${idx++}`);
+    vals.push(+visitador_id);
+  }
+  if (status) {
+    conds.push(`o.status = $${idx++}`);
+    vals.push(status);
+  }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  const rows = (await q(`
+    SELECT o.id, o.visitador_id, o.medico, o.fecha_solicitud, o.fecha_entrega,
+           o.status, o.admin_notas, o.notas, o.tomado_por, o.pending_edit, o.creado, o.actualizado,
+           u.nombre AS visitador_nombre, u.email AS visitador_email,
+           a.nombre AS admin_nombre,
+           COUNT(oi.id) AS total_items,
+           COALESCE(
+             json_agg(
+               json_build_object(
+                 'id', oi.id,
+                 'nombre', oi.nombre,
+                 'tipo', oi.tipo,
+                 'cantidad_solicitada', oi.cantidad_solicitada,
+                 'cantidad_aprobada', oi.cantidad_aprobada,
+                 'rechazado', oi.rechazado,
+                 'razon_rechazo', oi.razon_rechazo
+               ) ORDER BY oi.id
+             ) FILTER (WHERE oi.id IS NOT NULL), '[]'
+           ) AS items
+    FROM orders o
+    JOIN users u ON u.id = o.visitador_id
+    LEFT JOIN users a ON a.id = o.tomado_por
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    ${where}
+    GROUP BY o.id, u.nombre, u.email, a.nombre
+    ORDER BY o.creado DESC
+  `, vals)).rows;
+  res.json(rows);
+}));
+
+// GET /api/orders/visitadores — lista visitadores con pedidos activos (admin only)
+// IMPORTANTE: debe estar ANTES de /api/orders/:id para que Express no confunda 'visitadores' con un id
+app.get('/api/orders/visitadores', auth, admin, wrap(async (req, res) => {
+  const rows = (await q(`
+    SELECT u.id, u.nombre, u.email,
+      COUNT(o.id) FILTER (WHERE o.status NOT IN ('listo','rechazado')) AS pedidos_activos,
+      COUNT(o.id) AS total_pedidos
+    FROM users u
+    LEFT JOIN orders o ON o.visitador_id = u.id
+    WHERE u.activo = true AND u.rol IN ('visitador','administrador','master')
+    GROUP BY u.id, u.nombre, u.email
+    ORDER BY pedidos_activos DESC, u.nombre
+  `)).rows;
+  res.json(rows);
+}));
+
+// GET /api/orders/medicos — lista de médicos registrados para pedidos
+// Si es visitador: devuelve solo sus médicos; si es admin: devuelve todos los médicos con su visitador asignado
+app.get('/api/orders/medicos', auth, wrap(async (req, res) => {
+  const isA = isAdm(req.user);
+  let where = '';
+  let params = [];
+  if (!isA) {
+    where = 'WHERE visitador_id = $1';
+    params.push(req.user.id);
+  }
+  const rows = (await q(`
+    WITH medicos_raw AS (
+      SELECT TRIM(v.cliente) AS medico,
+             COALESCE(TRIM(v.razon_social), '') AS institucion,
+             COALESCE(TRIM(v.especialidad), '') AS especialidad,
+             v.visitador_id,
+             u.nombre AS visitador_nombre,
+             u.email AS visitador_email,
+             v.fecha_hora AS fecha
+      FROM visits v
+      JOIN users u ON u.id = v.visitador_id
+      WHERE v.cliente IS NOT NULL AND TRIM(v.cliente) != ''
+      UNION ALL
+      SELECT TRIM(o.medico) AS medico,
+             '' AS institucion,
+             '' AS especialidad,
+             o.visitador_id,
+             u.nombre AS visitador_nombre,
+             u.email AS visitador_email,
+             o.creado AS fecha
+      FROM orders o
+      JOIN users u ON u.id = o.visitador_id
+      WHERE o.medico IS NOT NULL AND TRIM(o.medico) != ''
+    )
+    SELECT DISTINCT ON (LOWER(medico))
+      medico, institucion, especialidad, visitador_id, visitador_nombre, visitador_email
+    FROM medicos_raw
+    ${where}
+    ORDER BY LOWER(medico), fecha DESC
+  `, params)).rows;
+  res.json(rows);
+}));
+
+// GET /api/orders/:id
+app.get('/api/orders/:id', auth, wrap(async (req, res) => {
+  const ord = await getOrderFull(+req.params.id);
+  if (!ord) return res.status(404).json({ error: 'Pedido no encontrado' });
+  if (!isAdm(req.user) && ord.visitador_id !== req.user.id)
+    return res.status(403).json({ error: 'No autorizado' });
+  res.json(ord);
+}));
+
+// POST /api/orders — crear pedido
+app.post('/api/orders', auth, wrap(async (req, res) => {
+  const { medico, fecha_solicitud, fecha_entrega, notas, items, visitador_id } = req.body;
+  if (!medico) return res.status(400).json({ error: 'El médico es requerido' });
+  if (!items || !items.length) return res.status(400).json({ error: 'Debe agregar al menos un producto o muestra' });
+
+  // Determinar a qué visitador pertenece el pedido
+  let targetVisitadorId = req.user.id;
+  if (isAdm(req.user)) {
+    if (visitador_id) {
+      targetVisitadorId = +visitador_id;
+    } else {
+      // Buscar el visitador al que pertenece el médico seleccionado
+      const foundOwner = (await q(`
+        SELECT v.visitador_id FROM visits v
+        WHERE LOWER(TRIM(v.cliente)) = LOWER(TRIM($1)) AND v.visitador_id IS NOT NULL
+        ORDER BY v.fecha_hora DESC LIMIT 1
+      `, [medico.trim()])).rows[0] || (await q(`
+        SELECT o.visitador_id FROM orders o
+        WHERE LOWER(TRIM(o.medico)) = LOWER(TRIM($1)) AND o.visitador_id IS NOT NULL
+        ORDER BY o.creado DESC LIMIT 1
+      `, [medico.trim()])).rows[0];
+      if (foundOwner && foundOwner.visitador_id) {
+        targetVisitadorId = foundOwner.visitador_id;
+      }
+    }
+  }
+
+  const ord = (await q(`
+    INSERT INTO orders(visitador_id, medico, fecha_solicitud, fecha_entrega, notas)
+    VALUES($1, $2, $3, $4, $5) RETURNING *
+  `, [targetVisitadorId, medico, fecha_solicitud || new Date().toISOString().split('T')[0], fecha_entrega || null, notas || null])).rows[0];
+  for (const it of items) {
+    await q(`
+      INSERT INTO order_items(order_id, catalogo_id, nombre, tipo, cantidad_solicitada)
+      VALUES($1,$2,$3,$4,$5)
+    `, [ord.id, it.catalogo_id || null, it.nombre, it.tipo, it.cantidad_solicitada || 1]);
+  }
+  await logActivity(req, 'CREAR_PEDIDO', 'Pedidos', `Pedido #${ord.id} creado para médico: ${medico} (asignado a visitador #${targetVisitadorId})`);
+  res.json(await getOrderFull(ord.id));
+}));
+
+// ==================== SYNC INVENTARIO ====================
+async function syncOrderInventory(orderId) {
+  await q('DELETE FROM inventory_movements WHERE origen=$1 AND referencia_id=$2', ['pedido', orderId]);
+  const ord = (await q('SELECT * FROM orders WHERE id=$1', [orderId])).rows[0];
+  if (!ord) return;
+  const items = (await q('SELECT * FROM order_items WHERE order_id=$1 AND rechazado=false AND cantidad_aprobada > 0', [orderId])).rows;
+  for (const it of items) {
+    await q(`INSERT INTO inventory_movements(visitador_id, tipo, catalogo_id, nombre, cantidad, origen, referencia_id, notas)
+             VALUES($1,$2,$3,$4,$5,'pedido',$6,$7)`,
+      [ord.visitador_id, it.tipo, it.catalogo_id, it.nombre, it.cantidad_aprobada,
+       orderId, `Pedido #${orderId} - ${ord.medico}`]);
+  }
+}
+
+// PATCH /api/orders/:id — actualizar pedido
+app.patch('/api/orders/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const ord = await getOrderFull(id);
+  if (!ord) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+  const isOwner = ord.visitador_id === req.user.id;
+  const adm = isAdm(req.user);
+
+  if (!isOwner && !adm) return res.status(403).json({ error: 'No autorizado' });
+
+  const { medico, fecha_solicitud, fecha_entrega, notas, status, admin_notas, items } = req.body;
+
+  if (!adm) {
+    // Visitador: solo puede editar si status = 'enviado', sino queda como pendiente
+    if (ord.status !== 'enviado') {
+      await q('UPDATE orders SET pending_edit=true, actualizado=now() WHERE id=$1', [id]);
+      await logActivity(req, 'EDITAR_PEDIDO_PENDIENTE', 'Pedidos', `Visitador solicitó editar pedido #${id} (pendiente aprobación admin)`);
+      return res.json({ ok: true, pending: true, msg: 'Edición enviada. Pendiente de aprobación del administrador.' });
+    }
+    await q(`UPDATE orders SET medico=$1, fecha_solicitud=$2, fecha_entrega=$3, notas=$4, actualizado=now() WHERE id=$5`,
+      [medico || ord.medico, fecha_solicitud || ord.fecha_solicitud, fecha_entrega !== undefined ? fecha_entrega : ord.fecha_entrega, notas !== undefined ? notas : ord.notas, id]);
+    if (items && items.length) {
+      await q('DELETE FROM order_items WHERE order_id=$1', [id]);
+      for (const it of items) {
+        await q(`INSERT INTO order_items(order_id, catalogo_id, nombre, tipo, cantidad_solicitada)
+                 VALUES($1,$2,$3,$4,$5)`,
+          [id, it.catalogo_id || null, it.nombre, it.tipo, it.cantidad_solicitada || 1]);
+      }
+    }
+  } else {
+    // Admin puede cambiar todo
+    const newStatus = status || ord.status;
+    const tomado = (newStatus === 'revision' && !ord.tomado_por) ? req.user.id : ord.tomado_por;
+    await q(`UPDATE orders SET medico=$1, fecha_solicitud=$2, fecha_entrega=$3, notas=$4,
+              status=$5, admin_notas=$6, tomado_por=$7, pending_edit=false, actualizado=now()
+              WHERE id=$8`,
+      [medico || ord.medico, fecha_solicitud || ord.fecha_solicitud,
+       fecha_entrega !== undefined ? fecha_entrega : ord.fecha_entrega,
+       notas !== undefined ? notas : ord.notas,
+       newStatus, admin_notas !== undefined ? admin_notas : ord.admin_notas,
+       tomado, id]);
+    // Si admin edita items también
+    if (items && items.length) {
+      await q('DELETE FROM order_items WHERE order_id=$1', [id]);
+      for (const it of items) {
+        await q(`INSERT INTO order_items(order_id, catalogo_id, nombre, tipo, cantidad_solicitada)
+                 VALUES($1,$2,$3,$4,$5)`,
+          [id, it.catalogo_id || null, it.nombre, it.tipo, it.cantidad_solicitada || 1]);
+      }
+    }
+  }
+  if (adm && (status === 'listo' || status === 'aprobado')) {
+    await syncOrderInventory(id);
+  } else if (adm && status && status !== ord.status) {
+    await q('DELETE FROM inventory_movements WHERE origen=$1 AND referencia_id=$2', ['pedido', id]);
+  }
+  await logActivity(req, 'EDITAR_PEDIDO', 'Pedidos', `Pedido #${id} actualizado`);
+  res.json(await getOrderFull(id));
+}));
+
+// DELETE /api/orders/:id
+app.delete('/api/orders/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const ord = (await q('SELECT * FROM orders WHERE id=$1', [id])).rows[0];
+  if (!ord) return res.status(404).json({ error: 'Pedido no encontrado' });
+  const isOwner = ord.visitador_id === req.user.id;
+  const adm = isAdm(req.user);
+  if (!adm) {
+    if (!isOwner) return res.status(403).json({ error: 'No autorizado' });
+    if (ord.status !== 'enviado') return res.status(403).json({ error: 'Solo puedes eliminar pedidos en estado "Enviado a Planta"' });
+  }
+  await q('DELETE FROM orders WHERE id=$1', [id]);
+  await logActivity(req, 'ELIMINAR_PEDIDO', 'Pedidos', `Pedido #${id} eliminado`);
+  res.json({ ok: true });
+}));
+
+// POST /api/orders/:id/items — agregar item a pedido existente
+app.post('/api/orders/:id/items', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const ord = (await q('SELECT * FROM orders WHERE id=$1', [id])).rows[0];
+  if (!ord) return res.status(404).json({ error: 'Pedido no encontrado' });
+  if (!isAdm(req.user) && ord.visitador_id !== req.user.id)
+    return res.status(403).json({ error: 'No autorizado' });
+  if (!isAdm(req.user) && ord.status !== 'enviado')
+    return res.status(403).json({ error: 'No se pueden modificar ítems de un pedido en proceso' });
+  const { catalogo_id, nombre, tipo, cantidad_solicitada } = req.body;
+  const item = (await q(`INSERT INTO order_items(order_id,catalogo_id,nombre,tipo,cantidad_solicitada)
+                          VALUES($1,$2,$3,$4,$5) RETURNING *`,
+    [id, catalogo_id || null, nombre, tipo, cantidad_solicitada || 1])).rows[0];
+  res.json(item);
+}));
+
+// PATCH /api/order-items/:id — actualizar item (admin: cantidad_aprobada, rechazo; todos: cantidad_solicitada)
+app.patch('/api/order-items/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const item = (await q('SELECT oi.*, o.visitador_id, o.status, o.tomado_por FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.id=$1', [id])).rows[0];
+  if (!item) return res.status(404).json({ error: 'Ítem no encontrado' });
+  const adm = isAdm(req.user);
+  if (!adm && item.visitador_id !== req.user.id) return res.status(403).json({ error: 'No autorizado' });
+
+  const { cantidad_aprobada, rechazado, razon_rechazo, cantidad_solicitada } = req.body;
+  if (adm) {
+    await q(`UPDATE order_items SET
+      cantidad_aprobada = COALESCE($1, cantidad_aprobada),
+      rechazado = COALESCE($2, rechazado),
+      razon_rechazo = COALESCE($3, razon_rechazo)
+      WHERE id=$4`,
+      [cantidad_aprobada !== undefined ? cantidad_aprobada : null,
+       rechazado !== undefined ? rechazado : null,
+       razon_rechazo !== undefined ? razon_rechazo : null, id]);
+  } else {
+    if (item.status !== 'enviado') return res.status(403).json({ error: 'No se puede editar ítem de un pedido en proceso' });
+    await q('UPDATE order_items SET cantidad_solicitada=COALESCE($1, cantidad_solicitada) WHERE id=$2',
+      [cantidad_solicitada !== undefined ? cantidad_solicitada : null, id]);
+  }
+  res.json({ ok: true });
+}));
+
+// DELETE /api/order-items/:id
+app.delete('/api/order-items/:id', auth, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const item = (await q('SELECT oi.*, o.visitador_id, o.status FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.id=$1', [id])).rows[0];
+  if (!item) return res.status(404).json({ error: 'Ítem no encontrado' });
+  if (!isAdm(req.user)) {
+    if (item.visitador_id !== req.user.id) return res.status(403).json({ error: 'No autorizado' });
+    if (item.status !== 'enviado') return res.status(403).json({ error: 'No se puede eliminar ítem de un pedido en proceso' });
+  }
+  await q('DELETE FROM order_items WHERE id=$1', [id]);
+  res.json({ ok: true });
+}));
+
+// POST /api/orders/:id/process — acción admin: aprobar, rechazar, marcar listo, tomar
+app.post('/api/orders/:id/process', auth, admin, wrap(async (req, res) => {
+  const id = +req.params.id;
+  const ord = (await q('SELECT * FROM orders WHERE id=$1', [id])).rows[0];
+  if (!ord) return res.status(404).json({ error: 'Pedido no encontrado' });
+  const { action, admin_notas, items } = req.body;
+  // action: 'tomar' | 'aprobar' | 'rechazar' | 'listo'
+
+  if (action === 'tomar') {
+    await q(`UPDATE orders SET status='revision', tomado_por=$1, actualizado=now() WHERE id=$2`, [req.user.id, id]);
+    await logActivity(req, 'TOMAR_PEDIDO', 'Pedidos', `Pedido #${id} tomado en revisión`);
+  } else if (action === 'aprobar') {
+    if (items && items.length) {
+      for (const it of items) {
+        await q('UPDATE order_items SET cantidad_aprobada=$1, rechazado=$2, razon_rechazo=$3 WHERE id=$4',
+          [it.cantidad_aprobada !== undefined ? it.cantidad_aprobada : null,
+           it.rechazado || false, it.razon_rechazo || null, it.id]);
+      }
+    }
+    await q(`UPDATE orders SET status='aprobado', admin_notas=$1, actualizado=now() WHERE id=$2`, [admin_notas || null, id]);
+    await logActivity(req, 'APROBAR_PEDIDO', 'Pedidos', `Pedido #${id} aprobado`);
+  } else if (action === 'rechazar') {
+    await q(`UPDATE orders SET status='rechazado', admin_notas=$1, actualizado=now() WHERE id=$2`, [admin_notas || null, id]);
+    await logActivity(req, 'RECHAZAR_PEDIDO', 'Pedidos', `Pedido #${id} rechazado`);
+  } else if (action === 'listo') {
+    if (items && items.length) {
+      for (const it of items) {
+        await q('UPDATE order_items SET cantidad_aprobada=$1, rechazado=$2, razon_rechazo=$3 WHERE id=$4',
+          [it.cantidad_aprobada !== undefined ? it.cantidad_aprobada : null,
+           it.rechazado || false, it.razon_rechazo || null, it.id]);
+      }
+    }
+    await q(`UPDATE orders SET status='listo', admin_notas=$1, actualizado=now() WHERE id=$2`, [admin_notas || null, id]);
+    await syncOrderInventory(id);
+    await logActivity(req, 'LISTO_PEDIDO', 'Pedidos', `Pedido #${id} marcado como listo`);
+  } else {
+    return res.status(400).json({ error: 'Acción no válida' });
+  }
+  res.json(await getOrderFull(id));
+}));
+
+// ==================== FIN PEDIDOS ====================
+
+// ==================== INVENTARIO / ASIGNACIONES ====================
+
+// GET /api/inventory — stock actual del visitador (o filtrado por visitador_id si admin)
+app.get('/api/inventory', auth, wrap(async (req, res) => {
+  const isA = isAdm(req.user);
+  const vid = isA && req.query.visitador_id ? +req.query.visitador_id : req.user.id;
+  const rows = (await q(`
+    SELECT tipo, nombre, catalogo_id,
+           SUM(CASE WHEN cantidad > 0 THEN cantidad ELSE 0 END) AS total_asignado,
+           ABS(SUM(CASE WHEN cantidad < 0 THEN cantidad ELSE 0 END)) AS total_entregado,
+           SUM(cantidad) AS stock
+    FROM inventory_movements
+    WHERE visitador_id = $1
+    GROUP BY tipo, nombre, catalogo_id
+    ORDER BY tipo, nombre
+  `, [vid])).rows;
+  res.json(rows);
+}));
+
+// GET /api/inventory/visitadores — lista de visitadores con movimientos (admin)
+app.get('/api/inventory/visitadores', auth, admin, wrap(async (req, res) => {
+  const rows = (await q(`
+    SELECT DISTINCT u.id, u.nombre, u.email
+    FROM inventory_movements im
+    JOIN users u ON u.id = im.visitador_id
+    ORDER BY u.nombre
+  `)).rows;
+  res.json(rows);
+}));
+
+// GET /api/inventory/report — reporte admin: stock + entregado por visitador
+app.get('/api/inventory/report', auth, admin, wrap(async (req, res) => {
+  const { from, to, visitador_id } = req.query;
+  let conds = []; let vals = []; let idx = 1;
+  if (from)        { conds.push(`im.fecha >= $${idx++}`); vals.push(from); }
+  if (to)          { conds.push(`im.fecha <= $${idx++}`); vals.push(to + ' 23:59:59'); }
+  if (visitador_id){ conds.push(`im.visitador_id = $${idx++}`); vals.push(+visitador_id); }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  const rows = (await q(`
+    SELECT u.id AS visitador_id, u.nombre AS visitador_nombre, u.email AS visitador_email,
+           im.tipo, im.nombre,
+           SUM(CASE WHEN im.cantidad > 0 THEN im.cantidad ELSE 0 END) AS total_asignado,
+           ABS(SUM(CASE WHEN im.cantidad < 0 THEN im.cantidad ELSE 0 END)) AS total_entregado,
+           SUM(im.cantidad) AS stock_actual
+    FROM inventory_movements im
+    JOIN users u ON u.id = im.visitador_id
+    ${where}
+    GROUP BY u.id, u.nombre, u.email, im.tipo, im.nombre
+    ORDER BY u.nombre, im.tipo, im.nombre
+  `, vals)).rows;
+  res.json(rows);
+}));
+
+// GET /api/inventory/deliveries/:visitador_id — entregas detalladas a médicos
+app.get('/api/inventory/deliveries/:visitador_id', auth, wrap(async (req, res) => {
+  const isA = isAdm(req.user);
+  const vid = +req.params.visitador_id;
+  if (!isA && vid !== req.user.id) return res.status(403).json({ error: 'No autorizado' });
+  const { from, to } = req.query;
+  let conds = ['im.visitador_id = $1', "im.origen = 'visita'", 'im.cantidad < 0'];
+  let vals = [vid]; let idx = 2;
+  if (from) { conds.push(`im.fecha >= $${idx++}`); vals.push(from); }
+  if (to)   { conds.push(`im.fecha <= $${idx++}`); vals.push(to + ' 23:59:59'); }
+  const rows = (await q(`
+    SELECT im.*, v.razon_social, v.lugar_visita, v.fecha_hora AS visita_fecha
+    FROM inventory_movements im
+    LEFT JOIN visits v ON v.id = im.referencia_id
+    WHERE ${conds.join(' AND ')}
+    ORDER BY im.fecha DESC
+    LIMIT 500
+  `, vals)).rows;
+  res.json(rows);
+}));
+
+// ==================== FIN INVENTARIO ====================
+
+
 function saveImg(d, prefix) {
   const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(d || '');
   if (!m) return null;
@@ -480,7 +1090,6 @@ const SEL = 'SELECT v.*, u.nombre AS visitador_nombre, u.email AS visitador_emai
 
 app.post('/api/visits', auth, wrap(async (req, res) => {
   const b = req.body || {};
-  if (!b.lugar_visita || !b.razon_social) return res.status(400).json({ error: 'Lugar de visita y razón social son obligatorios' });
   if (!['primera', 'recurrente'].includes(b.tipo_visita)) b.tipo_visita = 'primera';
 
   // Idempotencia: evitar duplicados si la red se corta y se reintenta el envío
@@ -504,6 +1113,30 @@ app.post('/api/visits', auth, wrap(async (req, res) => {
   const params = [req.user.id, ...vals, saveImg(b.foto, 'foto'), saveImg(b.firma, 'firma'), clientUuid, fechaOffline];
   const r = await q(`INSERT INTO visits(${cols.join(',')}) VALUES(${cols.map((_, i) => '$' + (i + 1)).join(',')}) RETURNING id`, params);
   const newId = r.rows[0].id;
+
+  // --- Descontar inventario si se entregaron muestras o productos ---
+  const parseDetalleStr = str => {
+    const res = [];
+    if (!str) return res;
+    for (const part of str.split(',')) {
+      const m = /(.*?)\s*\((\d+)\)/.exec(part.trim());
+      if (m && +m[2] > 0) res.push({ nombre: m[1].trim(), cantidad: +m[2] });
+    }
+    return res;
+  };
+  const medicoNombre = b.razon_social || null;
+  for (const it of parseDetalleStr(b.muestras_detalle)) {
+    const catRow = (await q("SELECT id FROM catalogs WHERE tipo='muestra' AND LOWER(nombre)=LOWER($1)", [it.nombre])).rows[0];
+    await q('INSERT INTO inventory_movements(visitador_id,tipo,catalogo_id,nombre,cantidad,origen,referencia_id,medico,notas) VALUES($1,\'muestra\',$2,$3,$4,\'visita\',$5,$6,$7)',
+      [req.user.id, catRow ? catRow.id : null, it.nombre, -it.cantidad, newId, medicoNombre, 'Visita #' + newId]);
+  }
+  for (const it of parseDetalleStr(b.productos_detalle)) {
+    const catRow = (await q("SELECT id FROM catalogs WHERE tipo='producto' AND LOWER(nombre)=LOWER($1)", [it.nombre])).rows[0];
+    await q('INSERT INTO inventory_movements(visitador_id,tipo,catalogo_id,nombre,cantidad,origen,referencia_id,medico,notas) VALUES($1,\'producto\',$2,$3,$4,\'visita\',$5,$6,$7)',
+      [req.user.id, catRow ? catRow.id : null, it.nombre, -it.cantidad, newId, medicoNombre, 'Visita #' + newId]);
+  }
+  // --- fin descuento inventario ---
+
   const syncTag = b.is_offline ? ' [Sincronizada offline]' : '';
   await logActivity(req, 'CREAR_VISITA', 'Nueva Visita', `Registró visita #${newId}${syncTag} - ${b.tipo_visita === 'recurrente' ? 'Recurrente' : 'Primera'} a "${b.razon_social || ''}" (${b.lugar_visita || ''})`);
   res.json({ ok: true, id: newId });
