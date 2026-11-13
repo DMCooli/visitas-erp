@@ -2846,30 +2846,40 @@ async function vNueva() {
     }
   };
 
+  const normStockKey = s => (s || '').toString().trim().toLowerCase();
+
+  const getVisitadorStockMap = async () => {
+    const map = {};
+    try {
+      const data = await api('/api/inventory');
+      if (Array.isArray(data)) {
+        data.forEach(r => {
+          const s = Math.max(0, parseInt(r.stock, 10) || 0);
+          if (r.catalogo_id) map['id_' + r.catalogo_id] = s;
+          if (r.nombre) {
+            map[normStockKey(r.nombre)] = s;
+            const parts = r.nombre.split('—');
+            if (parts.length > 1) {
+              map[normStockKey(parts[1])] = s;
+            }
+          }
+        });
+      }
+    } catch(e) {
+      console.warn('Error obteniendo stock:', e);
+    }
+    return map;
+  };
+
   const openMuestrasModal = async () => {
     const current = parseMuestras(hidDetalle ? hidDetalle.value : '');
     const prodItems = (cat.muestra && cat.muestra.length)
       ? cat.muestra
-      : (cat.producto && cat.producto.length ? cat.producto : [
+      : [
           {nombre:'Prokal Qx'},{nombre:'Prokal Carbo Neutro'},{nombre:'Prokal Proteína'},{nombre:'Prokal Fibra'},{nombre:'Prokal Vit'}
-        ]);
+        ];
 
-    // Obtener stock del visitador
-    let stockMap = {};
-    try {
-      const stockData = await api('/api/inventory');
-      if (Array.isArray(stockData)) {
-        stockData.forEach(r => {
-          if (r.tipo === 'muestra' || r.tipo === 'sample') {
-            stockMap[r.nombre.trim().toLowerCase()] = +r.stock;
-          }
-        });
-        // Si no hay tipo definido como muestra, cargar todos
-        if (!Object.keys(stockMap).length) {
-          stockData.forEach(r => { stockMap[r.nombre.trim().toLowerCase()] = +r.stock; });
-        }
-      }
-    } catch(e) { /* sin stock disponible */ }
+    const stockMap = await getVisitadorStockMap();
 
     const modal = document.createElement('div');
     modal.className = 'modal';
@@ -2883,26 +2893,35 @@ async function vNueva() {
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px" id="m_list">
           ${prodItems.map(item => {
             const p = item.nombre;
+            const nameKey = normStockKey(item.nombre);
+            const idKey = item.id ? ('id_' + item.id) : null;
+            let stockQty = 0;
+            if (idKey && (idKey in stockMap)) stockQty = stockMap[idKey];
+            else if (nameKey in stockMap) stockQty = stockMap[nameKey];
+            stockQty = Math.max(0, parseInt(stockQty, 10) || 0);
+
+            const hasStock = stockQty > 0;
             const qty = current[p] || '';
-            const isChecked = !!qty;
-            const stockQty = stockMap[p.trim().toLowerCase()];
-            const hasStock = stockQty === undefined || stockQty > 0;
-            const stockLabel = stockQty !== undefined
-              ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:${hasStock ? '#d1fae5' : '#fee2e2'};color:${hasStock ? '#065f46' : '#991b1b'}">Stock: ${stockQty}</span>`
-              : '';
+            const isChecked = hasStock && !!qty;
+            const stockLabel = hasStock
+              ? `<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;white-space:nowrap">Stock: ${stockQty}</span>`
+              : `<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;white-space:nowrap">Stock: 0</span>`;
             const disabledAttr = hasStock ? '' : 'disabled';
-            const rowOpacity = hasStock ? '1' : '0.5';
+            const rowOpacity = hasStock ? '1' : '0.55';
+            const rowCursor = hasStock ? 'default' : 'not-allowed';
+            const labelCursor = hasStock ? 'pointer' : 'not-allowed';
+
             return `
-              <div class="m_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);opacity:${rowOpacity}">
-                <label style="display:flex;align-items:center;gap:10px;cursor:${hasStock ? 'pointer' : 'not-allowed'};flex:1;font-weight:500;margin:0">
-                  <input type="checkbox" class="m_chk" data-prod="${esc(p)}" data-maxstock="${stockQty !== undefined ? stockQty : 9999}" ${isChecked && hasStock ? 'checked' : ''} ${disabledAttr} style="width:18px;height:18px;accent-color:var(--ac);cursor:${hasStock ? 'pointer' : 'not-allowed'}">
+              <div class="m_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:${hasStock ? 'var(--bg)' : 'rgba(0,0,0,0.02)'};opacity:${rowOpacity};cursor:${rowCursor}">
+                <label style="display:flex;align-items:center;gap:10px;cursor:${labelCursor};flex:1;font-weight:500;margin:0;user-select:none;color:${hasStock ? 'var(--tx)' : 'var(--mut)'};${hasStock ? '' : 'pointer-events:none;'}">
+                  <input type="checkbox" class="m_chk" data-prod="${esc(p)}" data-maxstock="${stockQty}" ${isChecked ? 'checked' : ''} ${disabledAttr} style="width:18px;height:18px;accent-color:var(--ac);cursor:${labelCursor};${hasStock ? '' : 'pointer-events:none;'}">
                   <span>${esc(p)}</span>
                 </label>
                 <div style="display:flex;align-items:center;gap:8px">
                   ${stockLabel}
-                  <div class="m_qty_wrap" style="display:${isChecked && hasStock ? 'inline-flex' : 'none'};align-items:center;gap:6px">
+                  <div class="m_qty_wrap" style="display:${isChecked ? 'inline-flex' : 'none'};align-items:center;gap:6px">
                     <span style="font-size:12px;color:var(--mut)">Cant:</span>
-                    <input type="text" inputmode="numeric" pattern="[0-9]*" class="m_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="0" maxlength="4" ${disabledAttr} style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" class="m_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="1" maxlength="4" ${disabledAttr} style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
                   </div>
                 </div>
               </div>
@@ -2922,7 +2941,7 @@ async function vNueva() {
       const row = chk.closest('.m_row');
       const wrap = row.querySelector('.m_qty_wrap');
       const inp = row.querySelector('.m_qty');
-      const maxStock = parseInt(chk.dataset.maxstock, 10) || 9999;
+      const maxStock = parseInt(chk.dataset.maxstock, 10) || 0;
       chk.onchange = () => {
         if (chk.checked) {
           wrap.style.display = 'inline-flex';
@@ -2936,9 +2955,9 @@ async function vNueva() {
       };
       inp.oninput = () => {
         inp.value = inp.value.replace(/[^0-9]/g, '').slice(0, 4);
-        if (maxStock < 9999 && parseInt(inp.value,10) > maxStock) {
+        if (maxStock > 0 && parseInt(inp.value, 10) > maxStock) {
           inp.value = String(maxStock);
-          toast('Máximo disponible: ' + maxStock, 1);
+          toast('Máximo disponible en stock: ' + maxStock, 1);
         }
       };
     });
@@ -2958,7 +2977,7 @@ async function vNueva() {
       const selected = [];
       let hasError = false;
       modal.querySelectorAll('.m_chk').forEach(chk => {
-        if (chk.checked) {
+        if (chk.checked && !chk.disabled) {
           const p = chk.dataset.prod;
           const row = chk.closest('.m_row');
           const qty = row.querySelector('.m_qty').value.trim();
@@ -2972,7 +2991,7 @@ async function vNueva() {
       });
       if (hasError) return;
       if (!selected.length) {
-        toast('Selecciona al menos una muestra o indica "No"', 1);
+        toast('Selecciona al menos una muestra disponible o indica "No"', 1);
         return;
       }
       hidDetalle.value = selected.join(', ');
@@ -3033,21 +3052,7 @@ async function vNueva() {
       return;
     }
 
-    // Obtener stock del visitador
-    let stockMap = {};
-    try {
-      const stockData = await api('/api/inventory');
-      if (Array.isArray(stockData)) {
-        stockData.forEach(r => {
-          if (r.tipo === 'producto' || r.tipo === 'product') {
-            stockMap[r.nombre.trim().toLowerCase()] = +r.stock;
-          }
-        });
-        if (!Object.keys(stockMap).length) {
-          stockData.forEach(r => { stockMap[r.nombre.trim().toLowerCase()] = +r.stock; });
-        }
-      }
-    } catch(e) { /* sin stock */ }
+    const stockMap = await getVisitadorStockMap();
 
     const modal = document.createElement('div');
     modal.className = 'modal';
@@ -3061,26 +3066,37 @@ async function vNueva() {
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px" id="p_list">
           ${prodItems.map(item => {
             const p = (item.codigo ? item.codigo + ' — ' : '') + item.nombre;
+            const nameKey = normStockKey(item.nombre);
+            const fullKey = normStockKey(p);
+            const idKey = item.id ? ('id_' + item.id) : null;
+            let stockQty = 0;
+            if (idKey && (idKey in stockMap)) stockQty = stockMap[idKey];
+            else if (nameKey in stockMap) stockQty = stockMap[nameKey];
+            else if (fullKey in stockMap) stockQty = stockMap[fullKey];
+            stockQty = Math.max(0, parseInt(stockQty, 10) || 0);
+
+            const hasStock = stockQty > 0;
             const qty = current[p] || '';
-            const isChecked = !!qty;
-            const stockQty = stockMap[item.nombre.trim().toLowerCase()];
-            const hasStock = stockQty === undefined || stockQty > 0;
-            const stockLabel = stockQty !== undefined
-              ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:${hasStock ? '#dbeafe' : '#fee2e2'};color:${hasStock ? '#1e40af' : '#991b1b'}">Stock: ${stockQty}</span>`
-              : '';
+            const isChecked = hasStock && !!qty;
+            const stockLabel = hasStock
+              ? `<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;white-space:nowrap">Stock: ${stockQty}</span>`
+              : `<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;white-space:nowrap">Stock: 0</span>`;
             const disabledAttr = hasStock ? '' : 'disabled';
-            const rowOpacity = hasStock ? '1' : '0.5';
+            const rowOpacity = hasStock ? '1' : '0.55';
+            const rowCursor = hasStock ? 'default' : 'not-allowed';
+            const labelCursor = hasStock ? 'pointer' : 'not-allowed';
+
             return `
-              <div class="p_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);opacity:${rowOpacity}">
-                <label style="display:flex;align-items:center;gap:10px;cursor:${hasStock ? 'pointer' : 'not-allowed'};flex:1;font-weight:500;margin:0">
-                  <input type="checkbox" class="p_chk" data-prod="${esc(p)}" data-maxstock="${stockQty !== undefined ? stockQty : 9999}" ${isChecked && hasStock ? 'checked' : ''} ${disabledAttr} style="width:18px;height:18px;accent-color:#3b82f6;cursor:${hasStock ? 'pointer' : 'not-allowed'}">
+              <div class="p_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:${hasStock ? 'var(--bg)' : 'rgba(0,0,0,0.02)'};opacity:${rowOpacity};cursor:${rowCursor}">
+                <label style="display:flex;align-items:center;gap:10px;cursor:${labelCursor};flex:1;font-weight:500;margin:0;user-select:none;color:${hasStock ? 'var(--tx)' : 'var(--mut)'};${hasStock ? '' : 'pointer-events:none;'}">
+                  <input type="checkbox" class="p_chk" data-prod="${esc(p)}" data-maxstock="${stockQty}" ${isChecked ? 'checked' : ''} ${disabledAttr} style="width:18px;height:18px;accent-color:#3b82f6;cursor:${labelCursor};${hasStock ? '' : 'pointer-events:none;'}">
                   <span>${esc(p)}</span>
                 </label>
                 <div style="display:flex;align-items:center;gap:8px">
                   ${stockLabel}
-                  <div class="p_qty_wrap" style="display:${isChecked && hasStock ? 'inline-flex' : 'none'};align-items:center;gap:6px">
+                  <div class="p_qty_wrap" style="display:${isChecked ? 'inline-flex' : 'none'};align-items:center;gap:6px">
                     <span style="font-size:12px;color:var(--mut)">Cant:</span>
-                    <input type="text" inputmode="numeric" pattern="[0-9]*" class="p_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="0" maxlength="4" ${disabledAttr} style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" class="p_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="1" maxlength="4" ${disabledAttr} style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
                   </div>
                 </div>
               </div>
@@ -3099,16 +3115,16 @@ async function vNueva() {
       const row = chk.closest('.p_row');
       const wrap = row.querySelector('.p_qty_wrap');
       const inp = row.querySelector('.p_qty');
-      const maxStock = parseInt(chk.dataset.maxstock, 10) || 9999;
+      const maxStock = parseInt(chk.dataset.maxstock, 10) || 0;
       chk.onchange = () => {
         if (chk.checked) { wrap.style.display = 'inline-flex'; if (!inp.value || inp.value === '0') inp.value = '1'; inp.focus(); inp.select(); }
         else { wrap.style.display = 'none'; inp.value = ''; }
       };
       inp.oninput = () => {
         inp.value = inp.value.replace(/[^0-9]/g, '').slice(0, 4);
-        if (maxStock < 9999 && parseInt(inp.value,10) > maxStock) {
+        if (maxStock > 0 && parseInt(inp.value, 10) > maxStock) {
           inp.value = String(maxStock);
-          toast('Máximo disponible: ' + maxStock, 1);
+          toast('Máximo disponible en stock: ' + maxStock, 1);
         }
       };
     });
@@ -3118,7 +3134,7 @@ async function vNueva() {
     modal.querySelector('#p_save').onclick = () => {
       const selected = []; let hasError = false;
       modal.querySelectorAll('.p_chk').forEach(chk => {
-        if (chk.checked) {
+        if (chk.checked && !chk.disabled) {
           const p = chk.dataset.prod;
           const qty = chk.closest('.p_row').querySelector('.p_qty').value.trim();
           if (!qty || parseInt(qty, 10) <= 0) { hasError = true; toast('Introduce la cantidad para ' + p, 1); }
@@ -3126,7 +3142,7 @@ async function vNueva() {
         }
       });
       if (hasError) return;
-      if (!selected.length) { toast('Selecciona al menos un producto o indica "No"', 1); return; }
+      if (!selected.length) { toast('Selecciona al menos un producto disponible o indica "No"', 1); return; }
       hidDetalleProd.value = selected.join(', ');
       selProductos.value = 'Sí';
       close(); updateProductosUI();
