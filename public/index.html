@@ -1533,9 +1533,13 @@ async function vPedidos(tab, selectedVisitadorId = null) {
 
   const calcTotalQty = (items) => (items || []).reduce((acc, it) => acc + (it.cantidad_solicitada || 0), 0);
 
-  // Helper para armar opciones del select según tipo
+  // Helper para armar opciones del select según tipo (orden alfabético estricto)
   const getCatalogOptionsHtml = (tipo, selectedId, selectedName) => {
-    const list = tipo === 'producto' ? (cat.producto || []) : (cat.muestra || []);
+    const list = ((tipo === 'producto' ? cat.producto : cat.muestra) || []).slice().sort((a, b) => {
+      const cmp = (a.nombre || '').trim().localeCompare((b.nombre || '').trim(), 'es', { sensitivity: 'base' });
+      if (cmp !== 0) return cmp;
+      return (a.codigo || '').trim().localeCompare((b.codigo || '').trim(), 'es', { sensitivity: 'base', numeric: true });
+    });
     let options = '<option value="">— Seleccione de la lista registrada —</option>';
     let found = false;
     list.forEach(c => {
@@ -2877,11 +2881,11 @@ async function vNueva() {
       if (freshCat && freshCat.muestra) { cat = freshCat; try { dbSaveCache('catalogs', cat); } catch(_) {} }
     } catch(_) {}
     const current = parseMuestras(hidDetalle ? hidDetalle.value : '');
-    const prodItems = (cat.muestra && cat.muestra.length)
+    const prodItems = ((cat.muestra && cat.muestra.length)
       ? cat.muestra
       : [
-          {nombre:'Prokal Qx'},{nombre:'Prokal Carbo Neutro'},{nombre:'Prokal Proteína'},{nombre:'Prokal Fibra'},{nombre:'Prokal Vit'}
-        ];
+          {nombre:'Prokal Carbo Neutro'},{nombre:'Prokal Fibra'},{nombre:'Prokal Proteína'},{nombre:'Prokal Qx'},{nombre:'Prokal Vit'}
+        ]).slice().sort((a, b) => (a.nombre || '').trim().localeCompare((b.nombre || '').trim(), 'es', { sensitivity: 'base' }));
 
     const stockMap = await getVisitadorStockMap();
 
@@ -3053,7 +3057,11 @@ async function vNueva() {
       if (freshCat && freshCat.producto) { cat = freshCat; try { dbSaveCache('catalogs', cat); } catch(_) {} }
     } catch(_) {}
     const current = parseProductos(hidDetalleProd ? hidDetalleProd.value : '');
-    const prodItems = (cat.producto && cat.producto.length) ? cat.producto : [];
+    const prodItems = ((cat.producto && cat.producto.length) ? cat.producto : []).slice().sort((a, b) => {
+      const cmp = (a.nombre || '').trim().localeCompare((b.nombre || '').trim(), 'es', { sensitivity: 'base' });
+      if (cmp !== 0) return cmp;
+      return (a.codigo || '').trim().localeCompare((b.codigo || '').trim(), 'es', { sensitivity: 'base', numeric: true });
+    });
     if (!prodItems.length) {
       toast('No hay productos registrados. Agrega productos en Configuración → Muestras / Productos.', 1);
       selProductos.value = '';
@@ -4223,8 +4231,12 @@ async function vConfig(tab, subcat = 'muestras') {
     cat.producto = cat.producto || [];
 
     const isMuestras = subcat === 'muestras';
-    const muestrasList = cat.muestra || [];
-    const productosList = cat.producto || [];
+    const muestrasList = (cat.muestra || []).slice().sort((a, b) => (a.nombre || '').trim().localeCompare((b.nombre || '').trim(), 'es', { sensitivity: 'base' }));
+    const productosList = (cat.producto || []).slice().sort((a, b) => {
+      const cmp = (a.nombre || '').trim().localeCompare((b.nombre || '').trim(), 'es', { sensitivity: 'base' });
+      if (cmp !== 0) return cmp;
+      return (a.codigo || '').trim().localeCompare((b.codigo || '').trim(), 'es', { sensitivity: 'base', numeric: true });
+    });
 
     main.innerHTML = tabs + `
       <div class="card" style="margin-bottom:16px">

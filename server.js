@@ -382,7 +382,7 @@ app.get('/api/logs', auth, requireLogs, wrap(async (req, res) => {
 
 // ---------- Catálogos ----------
 app.get('/api/catalogs', auth, wrap(async (req, res) => {
-  const r = (await q('SELECT id,tipo,nombre,codigo FROM catalogs ORDER BY codigo NULLS LAST, nombre')).rows;
+  const r = (await q('SELECT id,tipo,nombre,codigo FROM catalogs ORDER BY lower(nombre), codigo NULLS LAST')).rows;
   res.json({
     institucion: r.filter(x => x.tipo === 'institucion'),
     especialidad: r.filter(x => x.tipo === 'especialidad'),
