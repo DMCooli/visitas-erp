@@ -28,7 +28,7 @@ const q = (s, p) => pool.query(s, p);
 // Campos del registro de visitas (mismos de la hoja "Visitas Medicas")
 const F = ['tipo_visita', 'cedula', 'lugar_visita', 'estado', 'ciudad', 'zona', 'razon_social', 'cliente', 'fecha_nacimiento', 'nro_colegiado',
   'especialidad', 'operaciones_mensuales', 'encargado', 'responsable', 'contacto', 'mas_info_contacto', 'correo', 'horario_trabajo',
-  'otra_institucion', 'horario_otra_institucion', 'muestras_entregadas', 'muestras_detalle', 'instagram', 'facebook', 'otras_redes', 'secretaria_nombre',
+  'otra_institucion', 'horario_otra_institucion', 'muestras_entregadas', 'muestras_detalle', 'instagram', 'facebook', 'otras_redes', 'redes_sociales', 'secretaria_nombre',
   'secretaria_fecha_nacimiento', 'secretaria_telefono', 'direccion', 'secretaria_facebook', 'secretaria_instagram',
   'secretaria_otras_redes', 'pacientes_diarios', 'costo_consultas', 'usaria_producto', 'prescribe_suplementos',
   'prescribira_suplementos', 'comprometido', 'observaciones', 'ubicacion', 'productos_entregados', 'productos_detalle'];
@@ -84,6 +84,7 @@ async function initDb() {
   await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS fecha_offline TIMESTAMPTZ');
   await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS productos_entregados TEXT');
   await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS productos_detalle TEXT');
+  await q('ALTER TABLE visits ADD COLUMN IF NOT EXISTS redes_sociales TEXT');
 
   if (!(await q('SELECT 1 FROM catalogs LIMIT 1')).rowCount) {
     for (const n of INSTITUCIONES) await q("INSERT INTO catalogs(tipo,nombre) VALUES('institucion',$1)", [n]);

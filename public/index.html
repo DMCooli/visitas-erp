@@ -495,13 +495,13 @@ const SECTIONS = [
   ['Datos de la visita', [['lugar_visita','Lugar de visita','inst'],['estado','Estado','estado'],['ciudad','Ciudad','ciudad'],['zona','Zona'],['razon_social','Razón social','text'],['direccion','Dirección','area']]],
   ['Médicos', [['cedula','DNI / Cédula','hidden'],['cliente','Cliente'],['fecha_nacimiento','Fecha de nacimiento','date'],['nro_colegiado','Nro. de colegiado'],['especialidad','Especialidad del médico','esp'],['operaciones_mensuales','Operaciones mensuales'],['pacientes_diarios','Pacientes diarios'],['costo_consultas','Costo de consultas'],['horario_trabajo','Horario de trabajo'],['otra_institucion','Otra institución donde labora'],['horario_otra_institucion','Horario otra institución']]],
   ['Contacto', [['encargado','Encargado'],['responsable','Responsable'],['contacto','Contacto (teléfono)','tel'],['mas_info_contacto','Más información de contacto'],['correo','Correo electrónico','email']]],
-  ['Redes sociales', [['instagram','Instagram'],['facebook','Facebook'],['otras_redes','Otras redes sociales']]],
+  ['Redes sociales', [['redes_sociales','Redes sociales','redes'],['instagram','Instagram','hidden'],['facebook','Facebook','hidden'],['otras_redes','Otras redes sociales','hidden']]],
   ['Secretaria', [['secretaria_nombre','Nombre de secretaria'],['secretaria_fecha_nacimiento','Fecha de nacimiento','date'],['secretaria_telefono','Nro. de teléfono','tel'],['secretaria_facebook','Facebook'],['secretaria_instagram','Instagram'],['secretaria_otras_redes','Otras redes sociales']]],
   ['Evaluación comercial', [['muestras_entregadas','Muestras médicas entregadas','yn'],['muestras_detalle','Detalle de muestras entregadas','hidden'],['productos_entregados','Productos entregados','yn'],['productos_detalle','Detalle de productos entregados','hidden'],['usaria_producto','Usaría el producto','yn'],['prescribe_suplementos','Prescribe suplementos','yn'],['prescribira_suplementos','Prescribirá suplementos','yn'],['comprometido','Comprometido','yn'],['observaciones','Observaciones o sugerencias','area']]]
 ];
 const ALLF = SECTIONS.flatMap(s => s[1]);
 const LABEL = Object.fromEntries([...ALLF.map(f => [f[0], f[1]]), ['tipo_visita','Tipo de visita'], ['ubicacion','Ubicación'], ['muestras_detalle','Muestras entregadas (detalle)'], ['productos_detalle','Productos entregados (detalle)'], ['cedula','DNI / Cédula']]);
-const PREFILL = ['cedula','lugar_visita','estado','ciudad','zona','razon_social','direccion','cliente','fecha_nacimiento','nro_colegiado','especialidad','operaciones_mensuales','pacientes_diarios','costo_consultas','horario_trabajo','otra_institucion','horario_otra_institucion','encargado','responsable','contacto','mas_info_contacto','correo','instagram','facebook','otras_redes','secretaria_nombre','secretaria_fecha_nacimiento','secretaria_telefono','secretaria_facebook','secretaria_instagram','secretaria_otras_redes','muestras_entregadas','muestras_detalle','productos_entregados','productos_detalle'];
+const PREFILL = ['cedula','lugar_visita','estado','ciudad','zona','razon_social','direccion','cliente','fecha_nacimiento','nro_colegiado','especialidad','operaciones_mensuales','pacientes_diarios','costo_consultas','horario_trabajo','otra_institucion','horario_otra_institucion','encargado','responsable','contacto','mas_info_contacto','correo','instagram','facebook','otras_redes','redes_sociales','secretaria_nombre','secretaria_fecha_nacimiento','secretaria_telefono','secretaria_facebook','secretaria_instagram','secretaria_otras_redes','muestras_entregadas','muestras_detalle','productos_entregados','productos_detalle'];
 
 let me = null, cat = { institucion: [], especialidad: [], muestra: [], producto: [] }, geo = {}, rows = [], page = 0, view = 'dash';
 const PS = 25;
@@ -2523,6 +2523,18 @@ function fieldHtml([n, l, t, req]) {
   let i;
   const stList = Object.keys(geo).length ? Object.keys(geo) : ESTADOS;
   if (t === 'hidden') return `<input type="hidden" id="${id}">`;
+  if (t === 'redes') {
+    return `<div class="fld full" id="fld_redes_sociales" style="grid-column:1/-1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;color:var(--mut);font-weight:600">Redes sociales del médico</span>
+        <button type="button" class="btn sec sm" id="btn_add_red" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;font-size:12px;font-weight:600">
+          <span style="font-size:15px;line-height:1;font-weight:bold">+</span> Añadir red
+        </button>
+      </div>
+      <div id="redes_list" style="display:flex;flex-direction:column;gap:8px"></div>
+      <input type="hidden" id="${id}">
+    </div>`;
+  }
   if (t === 'area') i = `<textarea id="${id}" rows="3"></textarea>`;
   else if (t === 'inst') i = `<select id="${id}"${r}><option value="">Seleccione…</option>${opts(cat.institucion.map(o => o.nombre))}</select>`;
   else if (t === 'estado') i = `<select id="${id}"><option value="">Seleccione…</option>${opts(stList)}</select>`;
@@ -2549,10 +2561,7 @@ function fieldHtml([n, l, t, req]) {
   else if (t === 'esp') i = `<input id="${id}" list="dl_esp" autocomplete="off"><datalist id="dl_esp">${opts(cat.especialidad.map(o => o.nombre))}</datalist>`;
   else i = `<input id="${id}" type="${t || 'text'}"${r}>`;
 
-  const isProtectable = !['muestras_entregadas','muestras_detalle','productos_entregados','productos_detalle','usaria_producto','prescribe_suplementos','prescribira_suplementos','comprometido','observaciones'].includes(n);
-  const editBtn = isProtectable ? `<button type="button" class="btn-edit-fld" data-target="${id}" title="Editar este campo">✏️ <span>Editar</span></button>` : '';
-
-  return `<label class="fld ${t === 'area' ? 'full' : ''}" id="lbl_${n}"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><span>${l}${req ? ' *' : ''}</span>${editBtn}</div>${i}</label>`;
+  return `<label class="fld ${t === 'area' ? 'full' : ''}" id="lbl_${n}"><span>${l}${req ? ' *' : ''}</span>${i}</label>`;
 }
 
 async function vAsignaciones(tab) {
@@ -2837,34 +2846,64 @@ async function vNueva() {
     }
   };
 
-  const openMuestrasModal = () => {
+  const openMuestrasModal = async () => {
     const current = parseMuestras(hidDetalle ? hidDetalle.value : '');
-    const prods = (cat.muestra && cat.muestra.length)
-      ? cat.muestra.map(p => p.nombre)
-      : (cat.producto && cat.producto.length ? cat.producto.map(p => p.nombre) : ['Prokal Qx', 'Prokal Carbo Neutro', 'Prokal Proteína', 'Prokal Fibra', 'Prokal Vit']);
+    const prodItems = (cat.muestra && cat.muestra.length)
+      ? cat.muestra
+      : (cat.producto && cat.producto.length ? cat.producto : [
+          {nombre:'Prokal Qx'},{nombre:'Prokal Carbo Neutro'},{nombre:'Prokal Proteína'},{nombre:'Prokal Fibra'},{nombre:'Prokal Vit'}
+        ]);
+
+    // Obtener stock del visitador
+    let stockMap = {};
+    try {
+      const stockData = await api('/api/inventory');
+      if (Array.isArray(stockData)) {
+        stockData.forEach(r => {
+          if (r.tipo === 'muestra' || r.tipo === 'sample') {
+            stockMap[r.nombre.trim().toLowerCase()] = +r.stock;
+          }
+        });
+        // Si no hay tipo definido como muestra, cargar todos
+        if (!Object.keys(stockMap).length) {
+          stockData.forEach(r => { stockMap[r.nombre.trim().toLowerCase()] = +r.stock; });
+        }
+      }
+    } catch(e) { /* sin stock disponible */ }
 
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.innerHTML = `
-      <div class="card" style="max-width:480px;width:100%;max-height:90vh;overflow-y:auto">
+      <div class="card" style="max-width:500px;width:100%;max-height:90vh;overflow-y:auto">
         <div class="row2" style="justify-content:space-between;margin-bottom:8px">
           <h2 style="margin:0">Muestras médicas entregadas</h2>
           <button type="button" class="btn sec sm" id="m_close" style="font-size:16px;padding:2px 8px">✕</button>
         </div>
-        <p style="color:var(--mut);font-size:13px;margin:0 0 16px">Selecciona los productos entregados e ingresa la cantidad (máximo 4 dígitos):</p>
+        <p style="color:var(--mut);font-size:13px;margin:0 0 16px">Selecciona las muestras entregadas e ingresa la cantidad:</p>
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px" id="m_list">
-          ${prods.map(p => {
+          ${prodItems.map(item => {
+            const p = item.nombre;
             const qty = current[p] || '';
             const isChecked = !!qty;
+            const stockQty = stockMap[p.trim().toLowerCase()];
+            const hasStock = stockQty === undefined || stockQty > 0;
+            const stockLabel = stockQty !== undefined
+              ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:${hasStock ? '#d1fae5' : '#fee2e2'};color:${hasStock ? '#065f46' : '#991b1b'}">Stock: ${stockQty}</span>`
+              : '';
+            const disabledAttr = hasStock ? '' : 'disabled';
+            const rowOpacity = hasStock ? '1' : '0.5';
             return `
-              <div class="m_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;font-weight:500;margin:0">
-                  <input type="checkbox" class="m_chk" data-prod="${esc(p)}" ${isChecked ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--ac);cursor:pointer">
+              <div class="m_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);opacity:${rowOpacity}">
+                <label style="display:flex;align-items:center;gap:10px;cursor:${hasStock ? 'pointer' : 'not-allowed'};flex:1;font-weight:500;margin:0">
+                  <input type="checkbox" class="m_chk" data-prod="${esc(p)}" data-maxstock="${stockQty !== undefined ? stockQty : 9999}" ${isChecked && hasStock ? 'checked' : ''} ${disabledAttr} style="width:18px;height:18px;accent-color:var(--ac);cursor:${hasStock ? 'pointer' : 'not-allowed'}">
                   <span>${esc(p)}</span>
                 </label>
-                <div class="m_qty_wrap" style="display:${isChecked ? 'inline-flex' : 'none'};align-items:center;gap:6px">
-                  <span style="font-size:12px;color:var(--mut)">Cant:</span>
-                  <input type="text" inputmode="numeric" pattern="[0-9]*" class="m_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="0" maxlength="4" style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
+                <div style="display:flex;align-items:center;gap:8px">
+                  ${stockLabel}
+                  <div class="m_qty_wrap" style="display:${isChecked && hasStock ? 'inline-flex' : 'none'};align-items:center;gap:6px">
+                    <span style="font-size:12px;color:var(--mut)">Cant:</span>
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" class="m_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="0" maxlength="4" ${disabledAttr} style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
+                  </div>
                 </div>
               </div>
             `;
@@ -2879,9 +2918,11 @@ async function vNueva() {
     document.body.appendChild(modal);
 
     modal.querySelectorAll('.m_chk').forEach(chk => {
+      if (chk.disabled) return;
       const row = chk.closest('.m_row');
       const wrap = row.querySelector('.m_qty_wrap');
       const inp = row.querySelector('.m_qty');
+      const maxStock = parseInt(chk.dataset.maxstock, 10) || 9999;
       chk.onchange = () => {
         if (chk.checked) {
           wrap.style.display = 'inline-flex';
@@ -2895,6 +2936,10 @@ async function vNueva() {
       };
       inp.oninput = () => {
         inp.value = inp.value.replace(/[^0-9]/g, '').slice(0, 4);
+        if (maxStock < 9999 && parseInt(inp.value,10) > maxStock) {
+          inp.value = String(maxStock);
+          toast('Máximo disponible: ' + maxStock, 1);
+        }
       };
     });
 
@@ -2979,38 +3024,64 @@ async function vNueva() {
     }
   };
 
-  const openProductosModal = () => {
+  const openProductosModal = async () => {
     const current = parseProductos(hidDetalleProd ? hidDetalleProd.value : '');
-    const prods = (cat.producto && cat.producto.length)
-      ? cat.producto.map(p => (p.codigo ? p.codigo + ' — ' : '') + p.nombre)
-      : [];
-    if (!prods.length) {
+    const prodItems = (cat.producto && cat.producto.length) ? cat.producto : [];
+    if (!prodItems.length) {
       toast('No hay productos registrados. Agrega productos en Configuración → Muestras / Productos.', 1);
       selProductos.value = '';
       return;
     }
+
+    // Obtener stock del visitador
+    let stockMap = {};
+    try {
+      const stockData = await api('/api/inventory');
+      if (Array.isArray(stockData)) {
+        stockData.forEach(r => {
+          if (r.tipo === 'producto' || r.tipo === 'product') {
+            stockMap[r.nombre.trim().toLowerCase()] = +r.stock;
+          }
+        });
+        if (!Object.keys(stockMap).length) {
+          stockData.forEach(r => { stockMap[r.nombre.trim().toLowerCase()] = +r.stock; });
+        }
+      }
+    } catch(e) { /* sin stock */ }
+
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.innerHTML = `
-      <div class="card" style="max-width:480px;width:100%;max-height:90vh;overflow-y:auto">
+      <div class="card" style="max-width:500px;width:100%;max-height:90vh;overflow-y:auto">
         <div class="row2" style="justify-content:space-between;margin-bottom:8px">
           <h2 style="margin:0">Productos entregados</h2>
           <button type="button" class="btn sec sm" id="p_close" style="font-size:16px;padding:2px 8px">✕</button>
         </div>
-        <p style="color:var(--mut);font-size:13px;margin:0 0 16px">Selecciona los productos entregados e ingresa la cantidad (máximo 4 dígitos):</p>
+        <p style="color:var(--mut);font-size:13px;margin:0 0 16px">Selecciona los productos entregados e ingresa la cantidad:</p>
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px" id="p_list">
-          ${prods.map(p => {
+          ${prodItems.map(item => {
+            const p = (item.codigo ? item.codigo + ' — ' : '') + item.nombre;
             const qty = current[p] || '';
             const isChecked = !!qty;
+            const stockQty = stockMap[item.nombre.trim().toLowerCase()];
+            const hasStock = stockQty === undefined || stockQty > 0;
+            const stockLabel = stockQty !== undefined
+              ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:${hasStock ? '#dbeafe' : '#fee2e2'};color:${hasStock ? '#1e40af' : '#991b1b'}">Stock: ${stockQty}</span>`
+              : '';
+            const disabledAttr = hasStock ? '' : 'disabled';
+            const rowOpacity = hasStock ? '1' : '0.5';
             return `
-              <div class="p_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;font-weight:500;margin:0">
-                  <input type="checkbox" class="p_chk" data-prod="${esc(p)}" ${isChecked ? 'checked' : ''} style="width:18px;height:18px;accent-color:#3b82f6;cursor:pointer">
+              <div class="p_row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);opacity:${rowOpacity}">
+                <label style="display:flex;align-items:center;gap:10px;cursor:${hasStock ? 'pointer' : 'not-allowed'};flex:1;font-weight:500;margin:0">
+                  <input type="checkbox" class="p_chk" data-prod="${esc(p)}" data-maxstock="${stockQty !== undefined ? stockQty : 9999}" ${isChecked && hasStock ? 'checked' : ''} ${disabledAttr} style="width:18px;height:18px;accent-color:#3b82f6;cursor:${hasStock ? 'pointer' : 'not-allowed'}">
                   <span>${esc(p)}</span>
                 </label>
-                <div class="p_qty_wrap" style="display:${isChecked ? 'inline-flex' : 'none'};align-items:center;gap:6px">
-                  <span style="font-size:12px;color:var(--mut)">Cant:</span>
-                  <input type="text" inputmode="numeric" pattern="[0-9]*" class="p_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="0" maxlength="4" style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
+                <div style="display:flex;align-items:center;gap:8px">
+                  ${stockLabel}
+                  <div class="p_qty_wrap" style="display:${isChecked && hasStock ? 'inline-flex' : 'none'};align-items:center;gap:6px">
+                    <span style="font-size:12px;color:var(--mut)">Cant:</span>
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" class="p_qty" data-prod="${esc(p)}" value="${esc(qty)}" placeholder="0" maxlength="4" ${disabledAttr} style="width:70px;padding:6px 8px;text-align:center;font-size:14px;font-weight:600;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx)">
+                  </div>
                 </div>
               </div>
             `;
@@ -3024,14 +3095,22 @@ async function vNueva() {
     `;
     document.body.appendChild(modal);
     modal.querySelectorAll('.p_chk').forEach(chk => {
+      if (chk.disabled) return;
       const row = chk.closest('.p_row');
       const wrap = row.querySelector('.p_qty_wrap');
       const inp = row.querySelector('.p_qty');
+      const maxStock = parseInt(chk.dataset.maxstock, 10) || 9999;
       chk.onchange = () => {
         if (chk.checked) { wrap.style.display = 'inline-flex'; if (!inp.value || inp.value === '0') inp.value = '1'; inp.focus(); inp.select(); }
         else { wrap.style.display = 'none'; inp.value = ''; }
       };
-      inp.oninput = () => { inp.value = inp.value.replace(/[^0-9]/g, '').slice(0, 4); };
+      inp.oninput = () => {
+        inp.value = inp.value.replace(/[^0-9]/g, '').slice(0, 4);
+        if (maxStock < 9999 && parseInt(inp.value,10) > maxStock) {
+          inp.value = String(maxStock);
+          toast('Máximo disponible: ' + maxStock, 1);
+        }
+      };
     });
     const close = () => modal.remove();
     modal.querySelector('#p_close').onclick = () => { if (!hidDetalleProd.value) selProductos.value = 'No'; close(); updateProductosUI(); };
@@ -3064,41 +3143,178 @@ async function vNueva() {
     if (btnEditProd) btnEditProd.onclick = openProductosModal;
   }
 
-  // Protección de campos para visitas recurrentes
-  const protectableFields = ALLF.filter(f => !['muestras_entregadas','muestras_detalle','productos_entregados','productos_detalle','usaria_producto','prescribe_suplementos','prescribira_suplementos','comprometido','observaciones'].includes(f[0])).map(f => f[0]);
+  // --- Componente de Redes Sociales ---
+  const REDES_OPCIONES = ['Facebook', 'Instagram', 'LinkedIn', 'Otra', 'Threads', 'TikTok', 'X'];
 
-  const setProtectedMode = (isProtected) => {
-    protectableFields.forEach(k => {
-      const el = $('#f_' + k);
-      const btn = document.querySelector(`.btn-edit-fld[data-target="f_${k}"]`);
-      if (el) {
-        el.disabled = isProtected;
-        el.classList.toggle('fld-protected', isProtected);
+  const syncRedesSociales = () => {
+    const list = $('#redes_list');
+    if (!list) return;
+    const items = [];
+    list.querySelectorAll('.red-row').forEach(row => {
+      const sel = row.querySelector('.red-select')?.value;
+      if (!sel) return;
+      let redNom = sel;
+      if (sel === 'Otra') {
+        redNom = (row.querySelector('.red-otra-nombre')?.value || '').trim() || 'Otra';
       }
-      if (btn) {
-        btn.style.display = isProtected ? 'inline-flex' : 'none';
-        btn.innerHTML = '✏️ <span>Editar</span>';
+      const cuenta = (row.querySelector('.red-cuenta')?.value || '').trim();
+      if (cuenta) {
+        items.push({ red: redNom, cuenta });
       }
     });
+
+    const fb = items.find(r => r.red.toLowerCase() === 'facebook');
+    const ig = items.find(r => r.red.toLowerCase() === 'instagram');
+    const otros = items.filter(r => r.red.toLowerCase() !== 'facebook' && r.red.toLowerCase() !== 'instagram');
+
+    if ($('#f_facebook')) $('#f_facebook').value = fb ? fb.cuenta : '';
+    if ($('#f_instagram')) $('#f_instagram').value = ig ? ig.cuenta : '';
+    if ($('#f_otras_redes')) $('#f_otras_redes').value = otros.map(r => `${r.red}: ${r.cuenta}`).join(' | ');
+    if ($('#f_redes_sociales')) $('#f_redes_sociales').value = items.length ? JSON.stringify(items) : '';
   };
 
-  document.querySelectorAll('.btn-edit-fld').forEach(btn => {
-    btn.onclick = (e) => {
-      e.preventDefault();
-      const targetEl = $('#' + btn.dataset.target);
-      if (!targetEl) return;
-      if (targetEl.disabled) {
-        targetEl.disabled = false;
-        targetEl.classList.remove('fld-protected');
-        targetEl.focus();
-        btn.innerHTML = '🔒 <span>Bloquear</span>';
+  const addRedSocialRow = (redVal = '', nombreOtra = '', cuentaVal = '') => {
+    const list = $('#redes_list');
+    if (!list) return null;
+
+    const row = document.createElement('div');
+    row.className = 'red-row';
+    row.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;';
+
+    const optsHtml = REDES_OPCIONES.map(r => `<option value="${r}"${r === redVal ? ' selected' : ''}>${r}</option>`).join('');
+
+    row.innerHTML = `
+      <div style="flex:0 0 135px;width:135px">
+        <select class="red-select" style="width:100%;padding:7px 8px;border-radius:6px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font-size:13px;cursor:pointer">
+          <option value="">Red social…</option>
+          ${optsHtml}
+        </select>
+      </div>
+      <div class="red-otra-wrap" style="display:${redVal === 'Otra' ? 'block' : 'none'};flex:0 0 160px;min-width:130px;max-width:180px">
+        <input type="text" class="red-otra-nombre" value="${esc(nombreOtra)}" placeholder="Nombre de red (ej: YouTube)" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font-size:13px">
+      </div>
+      <div class="red-cuenta-wrap" style="display:${redVal ? 'block' : 'none'};flex:1;min-width:150px">
+        <input type="text" class="red-cuenta" value="${esc(cuentaVal)}" placeholder="@cuenta o enlace" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font-size:13px">
+      </div>
+      <button type="button" class="btn dg sm red-del" title="Eliminar red" style="padding:5px 9px;font-size:13px;line-height:1;margin-left:auto">✕</button>
+    `;
+
+    const sel = row.querySelector('.red-select');
+    const otraWrap = row.querySelector('.red-otra-wrap');
+    const otraInput = row.querySelector('.red-otra-nombre');
+    const cuentaWrap = row.querySelector('.red-cuenta-wrap');
+    const cuentaInput = row.querySelector('.red-cuenta');
+    const delBtn = row.querySelector('.red-del');
+
+    sel.onchange = () => {
+      const val = sel.value;
+      if (!val) {
+        otraWrap.style.display = 'none';
+        cuentaWrap.style.display = 'none';
+      } else if (val === 'Otra') {
+        otraWrap.style.display = 'block';
+        cuentaWrap.style.display = 'block';
+        otraInput.focus();
       } else {
-        targetEl.disabled = true;
-        targetEl.classList.add('fld-protected');
-        btn.innerHTML = '✏️ <span>Editar</span>';
+        otraWrap.style.display = 'none';
+        cuentaWrap.style.display = 'block';
+        cuentaInput.focus();
+      }
+      syncRedesSociales();
+    };
+
+    otraInput.oninput = syncRedesSociales;
+    cuentaInput.oninput = syncRedesSociales;
+
+    delBtn.onclick = () => {
+      row.remove();
+      syncRedesSociales();
+      if (!list.querySelectorAll('.red-row').length) {
+        addRedSocialRow();
       }
     };
-  });
+
+    list.appendChild(row);
+    syncRedesSociales();
+    return row;
+  };
+
+  const btnAddRed = $('#btn_add_red');
+  if (btnAddRed) {
+    btnAddRed.onclick = (e) => {
+      e.preventDefault();
+      const r = addRedSocialRow();
+      if (r) {
+        const s = r.querySelector('.red-select');
+        if (s) s.focus();
+      }
+    };
+  }
+
+  const populateRedesSociales = (x) => {
+    const list = $('#redes_list');
+    if (!list) return;
+    list.innerHTML = '';
+    let loaded = false;
+
+    if (x && x.redes_sociales) {
+      try {
+        const parsed = typeof x.redes_sociales === 'string' ? JSON.parse(x.redes_sociales) : x.redes_sociales;
+        if (Array.isArray(parsed) && parsed.length) {
+          parsed.forEach(item => {
+            if (!item.red && !item.cuenta) return;
+            const standard = REDES_OPCIONES.filter(r => r !== 'Otra').find(r => r.toLowerCase() === (item.red || '').toLowerCase());
+            if (standard) {
+              addRedSocialRow(standard, '', item.cuenta || '');
+            } else {
+              addRedSocialRow('Otra', item.red || '', item.cuenta || '');
+            }
+            loaded = true;
+          });
+        }
+      } catch (e) {}
+    }
+
+    if (!loaded && x) {
+      if (x.facebook) {
+        addRedSocialRow('Facebook', '', x.facebook);
+        loaded = true;
+      }
+      if (x.instagram) {
+        addRedSocialRow('Instagram', '', x.instagram);
+        loaded = true;
+      }
+      if (x.otras_redes) {
+        const parts = x.otras_redes.split('|');
+        parts.forEach(p => {
+          const colonIdx = p.indexOf(':');
+          if (colonIdx > -1) {
+            const rName = p.slice(0, colonIdx).trim();
+            const rAcct = p.slice(colonIdx + 1).trim();
+            const standard = REDES_OPCIONES.filter(r => r !== 'Otra').find(r => r.toLowerCase() === rName.toLowerCase());
+            if (standard) {
+              addRedSocialRow(standard, '', rAcct);
+            } else {
+              addRedSocialRow('Otra', rName, rAcct);
+            }
+          } else if (p.trim()) {
+            addRedSocialRow('Otra', '', p.trim());
+          }
+          loaded = true;
+        });
+      }
+    }
+
+    if (!loaded) {
+      addRedSocialRow();
+    }
+  };
+
+  populateRedesSociales(null);
+  // --- Fin Redes Sociales ---
+
+  // Campos siempre disponibles y editables (sin bloqueo automático)
+  const setProtectedMode = () => {};
 
   const getFullCedula = () => {
     const pref = $('#ced_pref') ? $('#ced_pref').value : 'V-';
@@ -3106,24 +3322,17 @@ async function vNueva() {
     return num ? (pref + num) : '';
   };
 
-  const checkCedula = async (force = false) => {
+  const checkCedula = async () => {
     const full = getFullCedula();
     const badge = $('#visita_status_badge');
     const info = $('#ced_info_box');
     const spin = $('#ced_spinner');
 
-    if (!full || $('#ced_num').value.trim().length < 4) {
-      if (!full) {
-        currentTipoVisita = 'primera';
-        badge.innerHTML = '<span class="badge" style="background:rgba(15,157,138,.15);color:var(--ac);font-size:12px;padding:4px 10px">✨ Primera visita</span>';
-        info.innerHTML = '';
-        setProtectedMode(false);
-        lastSearchedCedula = '';
-      }
+    if (!full || $('#ced_num').value.trim().length < 3) {
+      toast('Ingresa la cédula para verificar', 1);
       return;
     }
 
-    if (!force && full === lastSearchedCedula) return;
     lastSearchedCedula = full;
     spin.style.display = 'block';
 
@@ -3134,16 +3343,17 @@ async function vNueva() {
       if (r.found && r.visit) {
         currentTipoVisita = 'recurrente';
         const x = r.visit;
-        badge.innerHTML = '<span class="badge" style="background:rgba(59,130,246,.15);color:#2563eb;font-size:12px;padding:4px 10px">🔄 Visita recurrente</span>';
+        badge.innerHTML = '<span class="badge" style="background:rgba(59,130,246,.15);color:#2563eb;font-size:12px;padding:4px 10px">✓ Registrado</span>';
         info.innerHTML = `<div style="color:var(--tx);background:rgba(15,157,138,.08);padding:10px 14px;border-radius:8px;border:1px solid rgba(15,157,138,.25);line-height:1.5">
           <b style="color:var(--ac)">✓ Médico registrado:</b> <b>${esc(x.cliente || x.razon_social)}</b> · ${esc(x.razon_social)} <span style="color:var(--mut)">(${esc(x.especialidad || 'Sin especialidad')})</span>
-          <div style="font-size:12px;color:var(--mut);margin-top:4px">Datos anteriores cargados en <b>modo protegido</b>. Los campos de <b>Evaluación comercial</b> y <b>Evidencia</b> están activos para esta visita. Haz clic en ✏️ <i>Editar</i> si deseas modificar algún dato anterior.</div>
+          <div style="font-size:12px;color:var(--mut);margin-top:4px">Datos anteriores cargados automáticamente en el formulario.</div>
         </div>`;
 
         PREFILL.forEach(k => {
           const el = $('#f_' + k);
           if (el) el.value = x[k] || '';
         });
+        populateRedesSociales(x);
         if ($('#f_cedula')) $('#f_cedula').value = full;
         if (x.estado) updateCiudades(x.estado, true);
 
@@ -3158,33 +3368,31 @@ async function vNueva() {
           const el = $('#f_' + k); if (el) el.value = '';
         });
 
-        setProtectedMode(true);
-        toast('Médico encontrado · Datos cargados en modo protegido');
+        toast('Médico registrado · Datos cargados');
       } else {
         currentTipoVisita = 'primera';
         badge.innerHTML = '<span class="badge" style="background:rgba(15,157,138,.15);color:var(--ac);font-size:12px;padding:4px 10px">✨ Primera visita</span>';
-        info.innerHTML = `<div style="color:var(--mut);background:rgba(0,0,0,.03);padding:8px 12px;border-radius:8px">No existe registro previo con la cédula <b>${esc(full)}</b>. El sistema lo considera una primera visita y habilita todos los campos.</div>`;
+        info.innerHTML = `<div style="color:var(--mut);background:rgba(0,0,0,.03);padding:8px 12px;border-radius:8px">No existe registro previo con la cédula <b>${esc(full)}</b>. El sistema indica que es una <b>primera visita</b>.</div>`;
         if ($('#f_cedula')) $('#f_cedula').value = full;
-        setProtectedMode(false);
+        populateRedesSociales(null);
+        toast('No registrado · Primera visita');
       }
     } catch (e) {
       spin.style.display = 'none';
-      console.error(e);
+      toast(e.message || 'Error al verificar', 1);
     }
   };
 
-  let cedTm;
   $('#ced_num').oninput = e => {
     e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 12);
-    clearTimeout(cedTm);
-    if (e.target.value.length >= 5) {
-      cedTm = setTimeout(() => checkCedula(), 400);
-    } else if (!e.target.value.length) {
+  };
+  $('#ced_num').onkeydown = e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
       checkCedula();
     }
   };
-  $('#ced_pref').onchange = () => { if ($('#ced_num').value.length >= 5) checkCedula(true); };
-  $('#btn_verificar_cedula').onclick = () => checkCedula(true);
+  $('#btn_verificar_cedula').onclick = () => checkCedula();
 
   $('#btn_toggle_lookup').onclick = () => {
     const w = $('#lkw');
@@ -3211,6 +3419,7 @@ async function vNueva() {
     box.querySelectorAll('[data-i]').forEach(d => d.onclick = () => {
       const x = r[d.dataset.i];
       PREFILL.forEach(k => { const el = $('#f_' + k); if (el) el.value = x[k] || ''; });
+      populateRedesSociales(x);
       if (x.estado) updateCiudades(x.estado, true);
       updateMuestrasUI();
       updateProductosUI();
@@ -3224,11 +3433,10 @@ async function vNueva() {
         }
       }
       currentTipoVisita = 'recurrente';
-      $('#visita_status_badge').innerHTML = '<span class="badge" style="background:rgba(59,130,246,.15);color:#2563eb;font-size:12px;padding:4px 10px">🔄 Visita recurrente</span>';
-      $('#ced_info_box').innerHTML = `<div style="color:var(--tx);background:rgba(15,157,138,.08);padding:10px 14px;border-radius:8px;border:1px solid rgba(15,157,138,.25)"><b>✓ Médico seleccionado:</b> <b>${esc(x.cliente || x.razon_social)}</b> · Datos cargados en modo protegido.</div>`;
-      setProtectedMode(true);
+      $('#visita_status_badge').innerHTML = '<span class="badge" style="background:rgba(59,130,246,.15);color:#2563eb;font-size:12px;padding:4px 10px">✓ Registrado</span>';
+      $('#ced_info_box').innerHTML = `<div style="color:var(--tx);background:rgba(15,157,138,.08);padding:10px 14px;border-radius:8px;border:1px solid rgba(15,157,138,.25)"><b>✓ Médico registrado:</b> <b>${esc(x.cliente || x.razon_social)}</b> · Datos cargados en el formulario.</div>`;
       box.style.display = 'none';
-      toast('Datos cargados de la visita anterior');
+      toast('Médico registrado · Datos cargados');
     });
   }, 300); };
 
@@ -3364,11 +3572,37 @@ async function vVisitas() {
 }
 function detail(v, reload) {
   const ub = v.ubicacion && /^-?\d/.test(v.ubicacion) ? `<a href="https://www.google.com/maps?q=${encodeURIComponent(v.ubicacion)}" target="_blank" rel="noopener">${esc(v.ubicacion)}</a>` : esc(v.ubicacion);
+
+  const formatVal = (k, val) => {
+    if (k === 'tipo_visita') return esc(val === 'recurrente' ? 'Recurrente' : 'Primera');
+    if (k === 'redes_sociales') {
+      try {
+        const arr = typeof val === 'string' ? JSON.parse(val) : val;
+        if (Array.isArray(arr) && arr.length) {
+          return arr.map(r => `<span style="display:inline-block;padding:3px 9px;border-radius:6px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);font-size:12px;margin:2px 4px 2px 0"><b>${esc(r.red)}:</b> ${esc(r.cuenta)}</span>`).join('');
+        }
+      } catch (e) {}
+    }
+    return esc(val);
+  };
+
+  const keysToShow = ['tipo_visita', ...ALLF.map(f => f[0])].filter(k => {
+    if (!v[k]) return false;
+    if (v.redes_sociales && ['facebook','instagram','otras_redes'].includes(k)) return false;
+    return true;
+  });
+
   const items = [['Fecha y hora', esc(fmtDT(v.fecha_hora))], ['Visitador', esc(v.visitador_nombre || v.visitador_email)]]
-    .concat(['tipo_visita', ...ALLF.map(f => f[0])].filter(k => v[k]).map(k => [LABEL[k], esc(k === 'tipo_visita' ? (v[k] === 'recurrente' ? 'Recurrente' : 'Primera') : v[k])]));
+    .concat(keysToShow.map(k => [LABEL[k] || k, formatVal(k, v[k])]));
   if (v.ubicacion) items.push(['Ubicación', ub]);
-  if (v.foto) items.push(['Foto', `<img src="${v.foto}">`]);
-  if (v.firma) items.push(['Firma', `<img src="${v.firma}">`]);
+  if (v.foto) {
+    const isUrl = v.foto.startsWith('/uploads/') || v.foto.startsWith('http') || v.foto.startsWith('data:');
+    items.push(['Foto', isUrl ? `<img src="${v.foto}" style="max-width:100%;max-height:360px;object-fit:contain;border-radius:8px;border:1px solid var(--bd);display:block;margin-top:4px">` : `<span style="color:var(--mut);font-size:12px">${esc(v.foto)}</span>`]);
+  }
+  if (v.firma) {
+    const isUrl = v.firma.startsWith('/uploads/') || v.firma.startsWith('http') || v.firma.startsWith('data:');
+    items.push(['Firma', isUrl ? `<img src="${v.firma}" style="max-width:280px;border-radius:6px;background:#fff;border:1px solid var(--bd);display:block;margin-top:4px">` : `<span style="color:var(--mut);font-size:12px">${esc(v.firma)}</span>`]);
+  }
   const m = document.createElement('div'); m.className = 'modal';
   m.innerHTML = `<div class="card"><div class="row2" style="justify-content:space-between"><h2>Visita #${v.id}</h2><span>${me.admin ? '<button class="btn dg sm" id="del">Eliminar</button> ' : ''}<button class="btn sec sm" id="cl">Cerrar</button></span></div>
     <dl class="kv">${items.map(([k, val]) => `<dt>${k}</dt><dd>${val}</dd>`).join('')}</dl></div>`;
